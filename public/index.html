@@ -297,7 +297,10 @@ body{
   <section class="screen" id="s-host">
     <div class="host-top">
       <span class="live-pill"><span class="dot"></span>LIVE 진행자</span>
-      <span class="host-count">참여 <b id="hCount">0</b>명</span>
+      <span style="display:flex;gap:8px;align-items:center">
+        <span class="axis-chip" id="hSid" style="font-size:11px">세션 —</span>
+        <span class="host-count">참여 <b id="hCount">0</b>명</span>
+      </span>
     </div>
     <div id="hostBody"></div>
     <div class="host-ctrl"><button class="btn seal" id="hostBtn" onclick="hostNext()">참여자 입장 받는 중 — 첫 질문 공개 ▶</button></div>
@@ -308,7 +311,10 @@ body{
   <section class="screen" id="s-live">
     <div class="host-top">
       <span class="live-pill"><span class="dot"></span>LIVE</span>
-      <span class="host-count" id="pQLabel"></span>
+      <span style="display:flex;gap:8px;align-items:center">
+        <span class="axis-chip" id="pSid" style="font-size:11px">세션 —</span>
+        <span class="host-count" id="pQLabel"></span>
+      </span>
     </div>
     <div id="liveBody"></div>
   </section>
@@ -756,24 +762,41 @@ function vsCardHTML(q, c){
 /* ================= 라이브: 진행자 ================= */
 async function hostStart(){
   if(!needFb()) return;
+  // 중복 오픈 방어: 이미 열려있던 리스너/세션 상태를 먼저 정리하고 새로 연다
   clearUnsubs();
-  live={ role:'host', sid:rid(), pid:null, phase:'lobby', q:-1, answeredQ:{} };
+  const sid = rid();
+  live={ role:'host', sid, pid:null, phase:'lobby', q:-1, answeredQ:{} };
   answersCache=[]; typesCache=[]; hostJoins=0;
+  // 1) 세션 문서 생성
   try{
-    await setDoc(doc(db,'hbti_sessions',live.sid),{phase:'lobby',q:-1,ts:Date.now()});
-    await setDoc(doc(db,'hbti_meta','current'),{sid:live.sid,ts:Date.now()});
-  }catch(e){ alert('세션 생성 실패 — Firestore 규칙/네트워크를 확인해주세요.'); return; }
-  unsubs.joins = onSnapshot(collection(db,'hbti_sessions',live.sid,'joins'), s=>{
+    await setDoc(doc(db,'hbti_sessions',sid),{phase:'lobby',q:-1,ts:Date.now()});
+  }catch(e){
+    console.error(e);
+    alert('세션 생성 실패 — 네트워크/Firestore 규칙을 확인한 뒤 다시 시도해주세요.');
+    live.role=null; return;
+  }
+  // 2) meta/current 를 새 sid 로 "반드시" 갱신 (참여자가 이 세션에 붙는 기준점).
+  //    실패 시 세션을 진행하지 않는다 — 옛 sid 가 남아 참여자가 다른 세션에 붙는 것을 방지.
+  try{
+    await setDoc(doc(db,'hbti_meta','current'),{sid, ts:Date.now()});
+  }catch(e){
+    console.error(e);
+    alert('세션 등록(meta) 실패 — 참여자가 이 세션에 연결되지 않습니다. 네트워크 확인 후 다시 열어주세요.');
+    clearUnsubs(); live.role=null; return;
+  }
+  // 3) meta 갱신 성공 후에만 리스너 구독 + 화면 표시
+  const hSid=document.getElementById('hSid'); if(hSid) hSid.textContent='세션 #'+sid.slice(-4);
+  unsubs.joins = onSnapshot(collection(db,'hbti_sessions',sid,'joins'), s=>{
     hostJoins=s.size;
     document.getElementById('hCount').textContent=hostJoins;
     pushTally();
   });
-  unsubs.answers = onSnapshot(collection(db,'hbti_sessions',live.sid,'answers'), s=>{
+  unsubs.answers = onSnapshot(collection(db,'hbti_sessions',sid,'answers'), s=>{
     answersCache = s.docs.map(d=>d.data());
     pushTally();
     if(live.phase==='question') renderHost();
   });
-  unsubs.types = onSnapshot(collection(db,'hbti_sessions',live.sid,'types'), s=>{
+  unsubs.types = onSnapshot(collection(db,'hbti_sessions',sid,'types'), s=>{
     typesCache = s.docs.map(d=>d.data().t);
     if(live.phase==='final') renderHost();
   });
@@ -851,24 +874,27 @@ async function joinLive(){
   answers=[]; tallyCache=null;
   show('s-live');
   document.getElementById('pQLabel').textContent='';
+  const pSid0=document.getElementById('pSid'); if(pSid0) pSid0.textContent='세션 —';
   document.getElementById('liveBody').innerHTML=
     `<div class="lobby-box"><span class="be">🔎</span><h3>세션을 찾는 중…</h3><p>진행자가 세션을 열면 자동으로 연결됩니다</p></div>
      <button class="btn ghost" onclick="goIntro()">처음으로</button>`;
-  // meta 리스너: 세션 sid를 "한 번" 확보하기 위한 용도. 확보 즉시 해제해 상시 연결을 줄인다.
+  // meta 리스너: 현재 세션 sid 를 추종한다. sid 가 바뀌면 "항상" 최신 세션으로 재구독한다.
+  // (meta 는 단일 공유 문서라 다수 접속에도 리스너 부담이 작다 — 정확한 세션 동기화를 위해 상시 유지)
   unsubs.meta = onSnapshot(doc(db,'hbti_meta','current'), async snap=>{
     const d=snap.data();
     if(!d || !d.sid) return;
-    if(live.sid===d.sid) return;
-    live.sid=d.sid; live.answeredQ={}; answers=[]; live.phase=null; live.q=-2;
-    // sid 확보 완료 → meta 리스너 즉시 해제 (상시 리스너에서 제외)
-    try{ if(unsubs.meta){ unsubs.meta(); unsubs.meta=null; } }catch(e){}
-    // join 기록은 세션당 1회만 (중복 쓰기 방지)
+    if(live.sid===d.sid) return;        // 이미 최신 세션이면 무시
+    // 세션(sid)이 바뀜 → 이전 세션 리스너 정리 후 최신 세션으로 재구독
+    live.sid=d.sid; live.answeredQ={}; answers=[]; live.phase=null; live.q=-2; live.joined=false;
+    const pSid=document.getElementById('pSid'); if(pSid) pSid.textContent='세션 #'+d.sid.slice(-4);
+    unsubTally();
+    try{ if(unsubs.session){ unsubs.session(); unsubs.session=null; } }catch(e){}
+    // join 기록은 (새) 세션당 1회만
     if(!live.joined){
       live.joined=true;
       try{ await setDoc(doc(db,'hbti_sessions',live.sid,'joins',live.pid),{ts:Date.now()}); }catch(e){}
     }
-    // guest가 상시 유지하는 유일한 리스너: session 상태 1개
-    try{ if(unsubs.session){ unsubs.session(); unsubs.session=null; } }catch(e){}
+    // session 상태 리스너 (guest 상시 유지 리스너)
     unsubs.session = onSnapshot(doc(db,'hbti_sessions',live.sid), s=>{
       const st=s.data(); if(!st) return;
       const changed = st.phase!==live.phase || st.q!==live.q;
