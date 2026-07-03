@@ -1,14 +1,949 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HBTI</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>HBTI — 인사쟁이 유형 검사 (Live)</title>
+<style>
+:root{
+  --ink:#26324B;         /* 짙은 남색 잉크 */
+  --ink-soft:#5A6B8C;
+  --paper:#F5F8FF;       /* 옅은 하늘 종이 */
+  --paper-2:#FFFFFF;
+  --seal:#E5484D;        /* 인주(도장) 빨강 — 시그니처 */
+  --seal-soft:#FFE9EA;
+  --gold:#F5B942;
+  --mint:#37B98C;
+  --sky:#4C7DF0;
+  --radius:22px;
+  --shadow:0 10px 30px rgba(38,50,75,.10);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:'Pretendard Variable',Pretendard,-apple-system,'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, #FFE9EA 0%, transparent 55%),
+    radial-gradient(900px 500px at -10% 110%, #E3EDFF 0%, transparent 55%),
+    var(--paper);
+  color:var(--ink);
+  min-height:100dvh;
+  display:flex;justify-content:center;
+  line-height:1.55;
+}
+.app{width:100%;max-width:480px;padding:20px 18px 40px;position:relative}
+
+/* ---------- 공통 ---------- */
+.screen{display:none;animation:fadeUp .45s ease both}
+.screen.active{display:block}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+
+.btn{
+  display:block;width:100%;border:none;cursor:pointer;
+  font-family:inherit;font-size:17px;font-weight:800;letter-spacing:-.01em;
+  padding:17px 20px;border-radius:16px;
+  background:var(--ink);color:#fff;box-shadow:var(--shadow);
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+.btn:active{transform:scale(.97)}
+.btn.seal{background:var(--seal)}
+.btn.ghost{background:#fff;color:var(--ink);border:2px solid #E2E8F5;box-shadow:none;font-weight:700}
+.btn:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.stack>*+*{margin-top:12px}
+
+.eyebrow{font-size:12px;font-weight:800;letter-spacing:.22em;color:var(--seal);text-transform:uppercase}
+
+/* ---------- 인트로 ---------- */
+.intro{text-align:center;padding-top:34px}
+.logo-seal{
+  width:118px;height:118px;margin:0 auto 20px;border-radius:28px;
+  background:var(--seal);color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:44px;font-weight:900;letter-spacing:-.02em;
+  box-shadow:0 14px 34px rgba(229,72,77,.35);
+  transform:rotate(-4deg);position:relative;
+}
+.logo-seal::after{
+  content:"";position:absolute;inset:7px;border:2.5px solid rgba(255,255,255,.65);border-radius:20px;
+}
+.intro h1{font-size:34px;font-weight:900;letter-spacing:-.03em;margin-bottom:6px}
+.intro .tag{font-size:16px;color:var(--ink-soft);font-weight:600;margin-bottom:22px}
+.char-row{font-size:34px;letter-spacing:8px;margin-bottom:8px;animation:bob 3.2s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+.intro-card{
+  background:#fff;border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);
+  text-align:left;margin:20px 0 22px;
+}
+.intro-card .row{display:flex;gap:12px;align-items:flex-start;padding:9px 0}
+.intro-card .row+.row{border-top:1px dashed #E7ECF7}
+.intro-card .ico{font-size:22px;flex:none}
+.intro-card b{display:block;font-size:15px}
+.intro-card span{font-size:13px;color:var(--ink-soft)}
+.privacy{font-size:12px;color:var(--ink-soft);margin-top:14px}
+
+/* ---------- 퀴즈 ---------- */
+.quiz-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px}
+.back-btn{
+  flex:none;width:40px;height:40px;border-radius:12px;cursor:pointer;
+  background:#fff;border:2px solid #E2E8F5;color:var(--ink);
+  font-size:19px;font-weight:900;font-family:inherit;
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .1s ease;
+}
+.back-btn:active{transform:scale(.92)}
+.back-btn:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.q-count{font-weight:900;font-size:15px}
+.q-count b{color:var(--seal)}
+.axis-chip{font-size:12px;font-weight:800;background:#fff;border:1.5px solid #E2E8F5;padding:5px 12px;border-radius:99px;color:var(--ink-soft)}
+.progress{height:10px;background:#E7ECF7;border-radius:99px;overflow:hidden;margin-bottom:26px}
+.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--seal),#FF8A5C);border-radius:99px;transition:width .35s cubic-bezier(.2,.8,.2,1)}
+.q-scene{
+  display:inline-block;font-size:17px;font-weight:900;color:var(--seal);
+  background:var(--seal-soft);border:2px solid #FFD3D5;
+  padding:10px 16px;border-radius:14px;margin-bottom:14px;
+  letter-spacing:-.01em;
+}
+.q-text{font-size:22px;font-weight:900;letter-spacing:-.02em;margin-bottom:24px;min-height:66px}
+.opt{
+  width:100%;text-align:left;cursor:pointer;font-family:inherit;
+  background:#fff;border:2.5px solid #E2E8F5;border-radius:18px;
+  padding:18px;margin-bottom:12px;display:flex;gap:14px;align-items:center;
+  font-size:16px;font-weight:700;color:var(--ink);
+  transition:transform .1s ease,border-color .1s ease,background .1s ease;
+}
+.opt .mark{
+  flex:none;width:38px;height:38px;border-radius:12px;background:var(--paper);
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.opt:active{transform:scale(.98)}
+.opt.picked{border-color:var(--seal);background:var(--seal-soft)}
+.opt:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+
+/* ---------- 도장 드롭 ---------- */
+.reveal{text-align:center;padding-top:60px}
+.reveal h2{font-size:22px;font-weight:900;margin-bottom:34px}
+.slots{display:flex;gap:12px;justify-content:center;margin-bottom:30px}
+.slot{
+  width:74px;height:74px;border-radius:18px;border:2.5px dashed #C9D4EA;
+  display:flex;align-items:center;justify-content:center;background:#fff;position:relative;
+}
+.slot .stamp{
+  width:62px;height:62px;border-radius:14px;background:var(--seal);color:#fff;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:26px;font-weight:900;line-height:1.05;
+  transform:rotate(-4deg);opacity:0;
+}
+.slot .stamp small{font-size:9.5px;font-weight:800;letter-spacing:.02em;opacity:.92}
+.slot.done .stamp{animation:stampIn .5s cubic-bezier(.2,1.6,.3,1) both}
+@keyframes stampIn{
+  0%{opacity:0;transform:translateY(-70px) rotate(-14deg) scale(1.6)}
+  60%{opacity:1;transform:translateY(4px) rotate(-2deg) scale(.94)}
+  100%{opacity:1;transform:translateY(0) rotate(-4deg) scale(1)}
+}
+.ddok{
+  position:absolute;top:-30px;left:50%;transform:translateX(-50%);
+  font-size:17px;font-weight:900;color:var(--seal);opacity:0;
+}
+.slot.done .ddok{animation:ddokPop .7s ease both}
+@keyframes ddokPop{0%{opacity:0;transform:translate(-50%,8px)}30%{opacity:1;transform:translate(-50%,-4px)}100%{opacity:0;transform:translate(-50%,-16px)}}
+.reveal .hint{color:var(--ink-soft);font-size:14px}
+
+/* ---------- 결과 ---------- */
+.result-card{
+  background:#fff;border-radius:26px;box-shadow:var(--shadow);
+  padding:28px 22px 24px;text-align:center;position:relative;overflow:hidden;margin-bottom:16px;
+}
+.result-card::before{
+  content:"認";position:absolute;right:-16px;top:-20px;font-size:120px;font-weight:900;
+  color:var(--seal);opacity:.06;transform:rotate(12deg);
+}
+.r-emoji{font-size:76px;line-height:1;margin-bottom:10px;display:inline-block;animation:bob 3s ease-in-out infinite}
+.r-code{display:flex;gap:6px;justify-content:center;margin-bottom:12px}
+.r-code span{
+  width:42px;height:42px;border-radius:11px;background:var(--seal);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:900;font-size:22px;transform:rotate(-3deg);
+}
+.r-code span:nth-child(2n){transform:rotate(3deg)}
+.r-name{font-size:26px;font-weight:900;letter-spacing:-.02em;margin-bottom:6px}
+.r-one{font-size:15px;color:var(--ink-soft);font-weight:600;margin-bottom:18px}
+.r-desc{
+  text-align:left;font-size:14.5px;background:var(--paper);border-radius:16px;padding:16px;margin-bottom:14px;
+}
+.r-sec{text-align:left;margin-bottom:14px}
+.r-sec h4{font-size:13px;font-weight:900;color:var(--seal);letter-spacing:.08em;margin-bottom:8px}
+.r-sec li{list-style:none;font-size:14px;padding:8px 12px;background:#fff;border:1.5px solid #EDF1FA;border-radius:12px;margin-bottom:7px}
+.chemi{
+  display:flex;align-items:center;gap:12px;text-align:left;
+  background:linear-gradient(90deg,#FFF6E5,#FFEFEF);border-radius:16px;padding:14px;
+}
+.chemi .ce{font-size:34px}
+.chemi b{font-size:14px;display:block}
+.chemi span{font-size:12.5px;color:var(--ink-soft)}
+.axis-bars{margin:4px 0 16px}
+.abar{margin-bottom:10px}
+.abar .lab{display:flex;justify-content:space-between;font-size:12.5px;font-weight:800;margin-bottom:4px}
+.abar .lab .l{color:var(--seal)} .abar .lab .r{color:var(--sky)}
+.abar .track{height:12px;border-radius:99px;background:#E9EEFF;overflow:hidden;display:flex;gap:2px}
+.abar .track .fa{height:100%;background:var(--seal);border-radius:99px 0 0 99px;transition:width .6s ease}
+.abar .track .fb{height:100%;background:var(--sky);border-radius:0 99px 99px 0;flex:1;transition:width .6s ease}
+
+/* ---------- 팀 대시보드 ---------- */
+.team-head{text-align:center;margin:8px 0 18px}
+.team-head h2{font-size:24px;font-weight:900}
+.team-head p{font-size:14px;color:var(--ink-soft)}
+.count-pill{
+  display:inline-flex;gap:8px;align-items:center;background:var(--ink);color:#fff;
+  border-radius:99px;padding:8px 18px;font-weight:800;font-size:14px;margin-top:10px;
+}
+.count-pill b{color:var(--gold);font-size:18px}
+.team-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:14px}
+.team-card h3{font-size:15px;font-weight:900;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.grid16{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cell{
+  border-radius:14px;background:var(--paper);padding:10px 4px;text-align:center;position:relative;
+  border:2px solid transparent;
+}
+.cell .e{font-size:24px;display:block}
+.cell .n{font-size:10.5px;font-weight:800;color:var(--ink-soft);display:block;margin-top:2px}
+.cell .c{
+  position:absolute;top:-6px;right:-6px;min-width:22px;height:22px;padding:0 5px;border-radius:99px;
+  background:var(--seal);color:#fff;font-size:11.5px;font-weight:900;
+  display:flex;align-items:center;justify-content:center;
+}
+.cell.hot{background:var(--seal-soft);border-color:var(--seal)}
+.cell.zero{opacity:.38}
+.face{
+  text-align:center;background:linear-gradient(135deg,#FFF3F3,#FFF9E8);
+  border-radius:var(--radius);padding:22px;margin-bottom:14px;box-shadow:var(--shadow);
+}
+.face .fe{font-size:60px;display:inline-block;animation:bob 3s ease-in-out infinite}
+.face .ft{font-size:13px;font-weight:800;color:var(--seal);letter-spacing:.1em;margin:6px 0 2px}
+.face .fn{font-size:22px;font-weight:900}
+.face .fs{font-size:13.5px;color:var(--ink-soft);margin-top:4px}
+.insight{background:var(--ink);color:#fff;border-radius:var(--radius);padding:20px;margin-bottom:14px}
+.insight h3{font-size:14px;font-weight:900;color:var(--gold);margin-bottom:10px;letter-spacing:.06em}
+.insight p{font-size:14.5px;line-height:1.7;color:#E8EDF9}
+.insight p+p{margin-top:10px}
+.toolbar{display:flex;gap:10px;margin-top:6px}
+.toolbar .btn{font-size:14px;padding:13px}
+.mini-note{font-size:11.5px;color:var(--ink-soft);text-align:center;margin-top:12px}
+.loading{text-align:center;padding:50px 0;color:var(--ink-soft);font-weight:700}
+.spin{display:inline-block;animation:spin 1s linear infinite;font-size:26px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- 라이브 모드 ---------- */
+.live-pill{
+  display:inline-flex;gap:7px;align-items:center;background:var(--seal);color:#fff;
+  border-radius:99px;padding:6px 14px;font-weight:800;font-size:13px;
+}
+.live-pill .dot{width:8px;height:8px;border-radius:99px;background:#fff;animation:blink 1.2s ease infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.host-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.host-count{font-weight:900;font-size:15px}
+.host-count b{color:var(--seal);font-size:20px}
+.vs-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:14px}
+.vs-opt{display:flex;align-items:center;gap:12px;padding:12px 0}
+.vs-opt+.vs-opt{border-top:1px dashed #E7ECF7}
+.vs-opt .ve{font-size:26px;flex:none}
+.vs-opt .vt{flex:1;font-size:15px;font-weight:700}
+.vs-opt .vn{font-size:22px;font-weight:900;min-width:44px;text-align:right}
+.vs-opt.a .vn{color:var(--seal)} .vs-opt.b .vn{color:var(--sky)}
+.vs-track{height:16px;border-radius:99px;background:#E9EEFF;overflow:hidden;display:flex;gap:2px;margin-top:12px}
+.vs-track .fa{height:100%;background:var(--seal);border-radius:99px 0 0 99px;transition:width .5s ease}
+.vs-track .fb{height:100%;background:var(--sky);border-radius:0 99px 99px 0;flex:1;transition:width .5s ease}
+.vs-pct{display:flex;justify-content:space-between;font-size:13px;font-weight:900;margin-top:6px}
+.vs-pct .l{color:var(--seal)} .vs-pct .r{color:var(--sky)}
+.host-ctrl{position:sticky;bottom:14px;margin-top:14px}
+.lobby-box{text-align:center;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:34px 20px;margin-bottom:14px}
+.lobby-box .be{font-size:52px;display:inline-block;animation:bob 2.6s ease-in-out infinite}
+.lobby-box h3{font-size:19px;font-weight:900;margin-top:8px}
+.lobby-box p{font-size:13.5px;color:var(--ink-soft);margin-top:4px}
+.done-badge{
+  display:inline-flex;gap:8px;align-items:center;background:#E8F8F1;color:var(--mint);
+  border-radius:99px;padding:9px 18px;font-weight:900;font-size:14px;margin-bottom:14px;
+}
+.recap-row{padding:10px 0}
+.recap-row+.recap-row{border-top:1px dashed #E7ECF7}
+.recap-row .rc-scene{font-size:13px;font-weight:800;margin-bottom:6px}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
-  <main style="font-family: system-ui, sans-serif; text-align: center; padding: 4rem 1rem;">
-    <h1>HBTI</h1>
-    <p>사이트 준비 중입니다.</p>
-  </main>
+<div class="app">
+
+  <!-- ① 인트로 -->
+  <section class="screen active" id="s-intro">
+    <div class="intro">
+      <div class="logo-seal">HB<br>TI</div>
+      <div class="char-row">🦅🕯️⚡🐋</div>
+      <h1>HBTI</h1>
+      <p class="tag">인사쟁이 유형 검사 · <b>일하는 마음의 네 글자</b></p>
+      <div class="intro-card">
+        <div class="row"><div class="ico">🏷️</div><div><b>12개의 장면, 4개의 글자</b><span>정답은 없습니다. 3초 안에 손이 가는 쪽이 당신입니다.</span></div></div>
+        <div class="row"><div class="ico">🀄</div><div><b>네 글자 도장이 찍힙니다</b><span>상사 · 동료 · 성장 · 판단 — 네 가지 마음의 조합</span></div></div>
+        <div class="row"><div class="ico">🗺️</div><div><b>우리 팀의 지도가 완성됩니다</b><span>모두의 결과가 모이면, 우리 팀의 얼굴이 나타납니다.</span></div></div>
+      </div>
+      <div class="stack">
+        <button class="btn seal" onclick="joinLive()">📡 라이브로 함께하기 (참여자)</button>
+        <button class="btn" onclick="startQuiz()">혼자 해보기 🀄</button>
+        <button class="btn ghost" onclick="openTeam()">우리 팀 결과 보기 🗺️</button>
+      </div>
+      <div id="setupNote" style="display:none;background:#FFF6E5;border:2px solid var(--gold);border-radius:16px;padding:14px;font-size:13px;text-align:left;margin-bottom:14px"><b>⚙️ 설정 필요</b><br>파일 상단 &lt;script&gt;의 <b>FIREBASE_CONFIG</b>에 Firebase 웹 앱 설정값(apiKey·authDomain·projectId)을 입력한 뒤 배포하세요.</div><p class="privacy">🔒 결과는 <b>익명</b>으로만 팀 집계에 반영됩니다 · 이름·소속을 수집하지 않으며 인사 목적에 사용되지 않습니다</p>
+      <p class="mini-note" id="hostLink" style="margin-top:16px;display:none"><a href="#" onclick="hostStart();return false" style="color:var(--ink-soft)">🎤 진행자 모드 — 라이브 세션 열기</a></p>
+    </div>
+  </section>
+
+  <!-- 라이브: 진행자 -->
+  <section class="screen" id="s-host">
+    <div class="host-top">
+      <span class="live-pill"><span class="dot"></span>LIVE 진행자</span>
+      <span class="host-count">참여 <b id="hCount">0</b>명</span>
+    </div>
+    <div id="hostBody"></div>
+    <div class="host-ctrl"><button class="btn seal" id="hostBtn" onclick="hostNext()">참여자 입장 받는 중 — 첫 질문 공개 ▶</button></div>
+    <p class="mini-note">이 화면을 스크린에 띄우고 진행하세요 · 통계는 실시간 자동 갱신</p>
+  </section>
+
+  <!-- 라이브: 참여자 -->
+  <section class="screen" id="s-live">
+    <div class="host-top">
+      <span class="live-pill"><span class="dot"></span>LIVE</span>
+      <span class="host-count" id="pQLabel"></span>
+    </div>
+    <div id="liveBody"></div>
+  </section>
+
+  <!-- ② 퀴즈 -->
+  <section class="screen" id="s-quiz">
+    <div class="quiz-top">
+      <button class="back-btn" onclick="goBack()" aria-label="이전 질문으로">←</button>
+      <div class="q-count">Q<b id="qNum">1</b> / 12</div>
+      <div class="axis-chip" id="axisChip">🧑‍✈️ 상사</div>
+    </div>
+    <div class="progress"><i id="pBar" style="width:8%"></i></div>
+    <p class="q-scene" id="qScene"></p>
+    <h2 class="q-text" id="qText"></h2>
+    <div id="optWrap"></div>
+  </section>
+
+  <!-- ③ 도장 드롭 -->
+  <section class="screen" id="s-reveal">
+    <div class="reveal">
+      <h2>당신의 네 글자가 도착했습니다</h2>
+      <div class="slots">
+        <div class="slot" id="slot0"><span class="ddok">똑!</span><span class="stamp"></span></div>
+        <div class="slot" id="slot1"><span class="ddok">똑!</span><span class="stamp"></span></div>
+        <div class="slot" id="slot2"><span class="ddok">똑!</span><span class="stamp"></span></div>
+        <div class="slot" id="slot3"><span class="ddok">똑!</span><span class="stamp"></span></div>
+      </div>
+      <p class="hint" id="revealHint">인주를 묻히는 중…</p>
+    </div>
+  </section>
+
+  <!-- ④ 결과 -->
+  <section class="screen" id="s-result">
+    <div class="result-card">
+      <span class="r-emoji" id="rEmoji">🦅</span>
+      <div class="r-code" id="rCode"></div>
+      <h2 class="r-name" id="rName"></h2>
+      <p class="r-one" id="rOne"></p>
+      <div class="axis-bars" id="rBars"></div>
+      <div class="r-desc" id="rDesc"></div>
+      <div class="r-sec">
+        <h4>🤝 나와 일하는 법</h4>
+        <ul id="rTips"></ul>
+      </div>
+      <div class="chemi" id="rChemi"></div>
+    </div>
+    <div class="stack">
+      <button class="btn seal" id="saveBtn" onclick="saveResult()">팀 지도에 내 도장 찍기 🀄</button>
+      <button class="btn ghost" onclick="openTeam()">우리 팀 결과 보기 🗺️</button>
+      <button class="btn ghost" onclick="restart()">다시 하기 ↺</button>
+    </div>
+    <p class="mini-note">저장 시 유형 네 글자만 익명으로 집계됩니다</p>
+  </section>
+
+  <!-- ⑤ 팀 대시보드 -->
+  <section class="screen" id="s-team">
+    <div class="team-head">
+      <h2>🗺️ 우리 팀 HBTI 지도</h2>
+      <p>모두의 도장이 모여 만든, 우리 팀의 얼굴</p>
+      <div class="count-pill">지금까지 <b id="tCount">0</b> 명이 도장을 찍었어요</div>
+    </div>
+    <div id="teamBody"><div class="loading"><span class="spin">🀄</span><br>도장을 세는 중…</div></div>
+    <div class="toolbar">
+      <button class="btn ghost" onclick="loadTeam()">새로고침 ⟳</button>
+      <button class="btn ghost" onclick="goIntro()">처음으로 🏠</button>
+    </div>
+    <p class="mini-note">교차 통계는 5명 미만일 때 표시되지 않습니다 · 익명 집계</p>
+  </section>
+
+</div>
+
+<script type="module">
+/* ==========================================================
+   HBTI × Firebase Firestore
+   ▼▼▼ 설정: Firebase 콘솔 > 프로젝트 설정 > 웹 앱에서 복사 ▼▼▼ */
+const FIREBASE_CONFIG = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+};
+/* ▲▲▲ 위 3개 값만 채우면 됩니다 ▲▲▲
+   ========================================================== */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, getDocs, addDoc, collection, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+let db=null, fbReady=false;
+try{
+  if(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey!=="YOUR_API_KEY"){
+    db = getFirestore(initializeApp(FIREBASE_CONFIG));
+    fbReady = true;
+  }
+}catch(e){ console.error('Firebase init 실패', e); }
+function needFb(){
+  if(fbReady) return true;
+  alert('Firebase 설정이 필요합니다.\n파일 상단의 FIREBASE_CONFIG를 채워주세요.');
+  return false;
+}
+
+/* ================= 데이터 ================= */
+const AXES = [
+  {key:0, name:'상사',  emoji:'🧑‍✈️', A:'T', B:'C', aKw:'믿음',   bKw:'자극',   aLabel:'T 믿어줄 때 큰다', bLabel:'흔들어줄 때 큰다 C'},
+  {key:1, name:'동료',  emoji:'🧑‍🤝‍🧑', A:'A', B:'M', aKw:'에이스', bKw:'단짝',   aLabel:'A 일잘러가 좋다',   bLabel:'내 편이 좋다 M'},
+  {key:2, name:'성장',  emoji:'🌱', A:'N', B:'D', aKw:'새길',   bKw:'한우물', aLabel:'N 새 길을 먼저',    bLabel:'한 우물을 깊게 D'},
+  {key:3, name:'판단',  emoji:'⚖️', A:'F', B:'H', aKw:'데이터', bKw:'공감',   aLabel:'F 숫자를 먼저 연다', bLabel:'이야기를 먼저 듣는다 H'},
+];
+const KW = {T:'믿음',C:'자극',A:'에이스',M:'단짝',N:'새길',D:'한우물',F:'데이터',H:'공감'};
+
+const QUESTIONS = [
+  // 상사 축 (0) — T 믿음 vs C 자극
+  {axis:0, scene:'📉 공들인 프로젝트가 엎어진 날', text:'더 힘이 되는 첫마디는 —',
+   a:{e:'🍚',t:'"괜찮아, 수습은 같이 하자"',v:'A'}, b:{e:'🌱',t:'"뭘 배웠어? 다음엔 어떻게 할래?"',v:'B'}},
+  {axis:0, scene:'🌙 밤새 만든 보고서를 올렸다', text:'더 설레는 상사는 —',
+   a:{e:'👀',t:'"고생했다, 이대로 가자"',v:'A'}, b:{e:'🎤',t:'"임원 보고, 네가 직접 해봐"',v:'B'}},
+  {axis:0, scene:'😮‍💨 솔직히 말하면', text:'내가 더 견디기 힘든 상사는 —',
+   a:{e:'🌪️',t:'나를 몰아붙이며 계속 흔드는 상사',v:'A'}, b:{e:'🧊',t:'나를 가만히 내버려두는 상사',v:'B'}},
+  // 동료 축 (1) — A 에이스 vs M 단짝
+  {axis:1, scene:'🎫 대형 TF 차출, 한 명만 데려간다면', text:'내 옆자리는 —',
+   a:{e:'🗡️',t:'결과물이 소름 돋는 일잘러',v:'A'}, b:{e:'🍜',t:'야근길에 컵라면 같이 먹어줄 내 편',v:'B'}},
+  {axis:1, scene:'😅 협업 중 진땀 나는 순간', text:'더 아쉬운 쪽은 —',
+   a:{e:'🕳️',t:'오타 대잔치 + 수식 와장창 파일',v:'A'}, b:{e:'🚪',t:'"제 일이 아닌데요" 닫힌 마음',v:'B'}},
+  {axis:1, scene:'🌧️ 슬럼프에 빠진 나', text:'동료가 해줬으면 하는 것은 —',
+   a:{e:'🎯',t:'"여기만 고치면 살아나" 원포인트 레슨',v:'A'}, b:{e:'☕',t:'"요즘 힘들지" 커피 한 잔',v:'B'}},
+  // 성장 축 (2) — N 새길 vs D 한우물
+  {axis:2, scene:'📱 단톡방에 "이 AI 툴 대박이래" 링크', text:'나의 반응은 —',
+   a:{e:'⚡',t:'이미 깔았다. 사내 1호 사용자 등극',v:'A'}, b:{e:'📚',t:'후기가 쌓이면 그때 제대로 마스터',v:'B'}},
+  {axis:2, scene:'🎁 회사가 교육비 100만원을 쏜다', text:'나의 선택은 —',
+   a:{e:'🧪',t:'아무도 안 배워본 신기술 클래스',v:'A'}, b:{e:'🪚',t:'내 주특기를 한 급 올릴 심화 과정',v:'B'}},
+  {axis:2, scene:'🤖 "업무 절반 AI 자동화 예정" 공지', text:'0.1초 뒤 내 표정 —',
+   a:{e:'✨',t:'"오예!" 남는 시간에 뭘 벌이지?',v:'A'}, b:{e:'🛡️',t:'"잠깐…" 내 깊이는 어디서 증명하지?',v:'B'}},
+  // 판단 축 (3) — F 데이터 vs H 공감
+  {axis:3, scene:'🕵️ "그 팀 요즘 심상치 않아요" 첩보 입수', text:'나의 첫 행동은 —',
+   a:{e:'📊',t:'근태·서베이 데이터 심층분석 돌입',v:'A'}, b:{e:'💬',t:'그 팀 김대리에게 "커피 한잔?" 톡',v:'B'}},
+  {axis:3, scene:'📑 보고서 두 부, 하나만 읽을 시간', text:'내 손이 가는 쪽은 —',
+   a:{e:'🔢',t:'표가 촘촘한 엑셀 장인의 10장',v:'A'}, b:{e:'🎙️',t:'육성이 생생한 인터뷰 맛집 10장',v:'B'}},
+  {axis:3, scene:'💎 채용 면접, 마지막 판단의 순간', text:'나를 움직이는 것은 —',
+   a:{e:'📈',t:'성과의 궤적 — 기록은 거짓말 안 해',v:'A'}, b:{e:'👁️',t:'마지막 질문 하나 — 눈빛이 다르던데',v:'B'}},
+];
+
+const TYPES = {
+  'TANF':{e:'🦅',n:'매의 눈 개척자',o:'믿고 맡겨주면, 데이터를 들고 아무도 안 가본 길을 정확하게 연다',
+    d:'안정된 신뢰 위에서 가장 대담해지는 사람입니다. 든든한 상사가 뒤를 지켜줄 때, 시퍼런 실력의 동료와 함께 데이터를 무기로 새 영역을 개척합니다. 감정보다 패턴을 먼저 읽지만, 그 냉철함은 조직을 위한 것입니다. 새 제도·새 툴의 도입 검토를 맡기면 가장 빛납니다.',
+    t:['방향만 합의되면 위임해 주세요 — 마이크로매니징에 시듭니다','피드백은 데이터와 근거로 — 감정적 설득은 오히려 역효과','새로운 시도를 제안할 공식 채널을 열어주세요'],c:'CMDH'},
+  'TANH':{e:'🧭',n:'이야기 항해사',o:'든든한 항구에서 출발해, 사람들의 이야기로 새 항로를 그린다',
+    d:'믿어주는 리더 아래에서 새로운 것을 시도하되, 그 판단의 나침반은 언제나 사람의 이야기입니다. 프로다운 동료와 함께 일하는 걸 좋아하지만, 결정의 순간엔 데이터보다 맥락과 서사를 먼저 봅니다. 새 프로그램의 현장 설득과 스토리텔링에 강합니다.',
+    t:['새 아이디어를 꺼낼 때 끝까지 들어주세요 — 중간에 숫자부터 묻지 말고','실행 전 현장 인터뷰 시간을 확보해주면 결과물이 달라집니다','문서보다 대화로 합을 맞추는 걸 선호합니다'],c:'CADF'},
+  'TADF':{e:'♟️',n:'조용한 승부사',o:'요란하지 않게, 숫자로 판을 끝낸다',
+    d:'묵묵히 한 분야를 파고들어, 결정적 순간에 데이터로 승부를 보는 사람입니다. 지켜봐주는 상사와 실력 있는 동료 사이에서 최고의 밀도를 냅니다. 화려한 발표보다 정확한 분석 한 장으로 말합니다. 제도 설계·정합성 검증처럼 정밀함이 생명인 일의 적임자입니다.',
+    t:['재촉하지 마세요 — 느린 게 아니라 정확한 겁니다','회의보다 문서로 소통하면 두 배로 일합니다','전문성을 인정하는 한마디가 최고의 보상입니다'],c:'CMNH'},
+  'TADH':{e:'🌳',n:'숲을 읽는 장인',o:'성과라는 나무와 사람이라는 숲을 함께 본다',
+    d:'한 영역을 오래 파온 전문가지만, 판단의 마지막 순간엔 언제나 사람을 봅니다. 실력 있는 동료를 존중하고, 자신을 믿어주는 리더에게 깊은 결과로 보답합니다. 겉으로 조용하지만 조직의 결을 가장 정확히 읽는 사람 중 하나입니다. 민감한 인사 사안의 최종 검토자로 이만한 적임자가 없습니다.',
+    t:['의견을 물어봐 주세요 — 먼저 나서서 말하지 않을 뿐 답을 갖고 있습니다','급한 결정보다 하루의 숙성 시간을 주세요','신뢰가 쌓이기 전까진 거리를 존중해주세요'],c:'CMNF'},
+  'TMNF':{e:'🔬',n:'다정한 분석가',o:'따뜻한 팀 안에서, 차가운 데이터로 새 답을 찾는다',
+    d:'분석은 차갑게, 관계는 따뜻하게 — 이 두 가지가 공존하는 드문 유형입니다. 심리적으로 안전한 팀에서 새로운 분석 방법과 툴을 실험하는 걸 즐깁니다. 숫자로 이야기하지만 그 숫자를 꺼내는 방식은 늘 부드럽습니다. HR 애널리틱스의 도입기에 꼭 필요한 사람입니다.',
+    t:['팀 분위기가 곧 이 사람의 생산성입니다 — 갈등 상황을 오래 방치하지 마세요','새 툴 실험을 "딴짓"이 아니라 투자로 봐주세요','분석 결과에 대한 리액션을 꼭 해주세요, 무반응이 가장 힘듭니다'],c:'CADH'},
+  'TMNH':{e:'🌱',n:'온기의 개척자',o:'사람을 살피며, 조직에 새로운 것을 심는다',
+    d:'새로운 시도를 좋아하지만 그 출발점은 언제나 "사람들이 이걸 어떻게 느낄까"입니다. 따뜻한 동료들과 안정적인 환경에서 창의성이 만개합니다. 조직문화·온보딩·구성원 경험처럼 사람의 마음에 새것을 심는 일에서 대체 불가능합니다.',
+    t:['아이디어를 낼 때 "현실성"부터 지적하지 말아주세요 — 다듬는 건 그 다음','변화 과제에 구성원 반응을 살피는 역할로 짝지어 주세요','작은 감사 표현에 크게 움직이는 사람입니다'],c:'CADF'},
+  'TMDF':{e:'🏺',n:'숫자의 도예가',o:'한 분야를 오래 빚어, 정교한 작품을 만든다',
+    d:'좋은 팀 안에서 한 우물을 깊게 파며, 데이터로 완성도를 증명하는 사람입니다. 보상·평가·인력계획처럼 숫자의 정밀함이 신뢰를 만드는 영역의 장인형 인재입니다. 화려하진 않지만 이 사람이 만든 결과물엔 좀처럼 구멍이 없습니다.',
+    t:['갑작스러운 업무 전환을 최소화해주세요 — 깊이가 이 사람의 무기입니다','결과물의 완성도를 알아봐주는 구체적 피드백을 주세요','팀 안에서의 소속감이 장기 근속의 핵심입니다'],c:'CANH'},
+  'TMDH':{e:'🕯️',n:'사람의 장인',o:'사람의 마음을 오래, 깊게 다루는 촛불 같은 전문가',
+    d:'조직에서 가장 따뜻한 깊이를 가진 사람입니다. 안정적인 환경에서, 믿을 수 있는 동료들과, 사람의 이야기를 오래 다뤄온 전문가입니다. 노무·고충처리·구성원 케어처럼 마음의 결을 다루는 일에서 이 사람의 연륜은 무엇으로도 대체되지 않습니다.',
+    t:['이 사람의 "감"을 데이터가 없다고 무시하지 마세요 — 축적된 패턴 인식입니다','감정노동이 큰 역할이니 회복 시간을 공식적으로 보장해주세요','급격한 변화보다 점진적 전환으로 합을 맞춰주세요'],c:'TANF'},
+  'CANF':{e:'⚡',n:'폭풍 데이터 검객',o:'거친 파도 위에서, 데이터의 칼을 휘두른다',
+    d:'도전적인 리더 아래에서, 실력 있는 동료와, 데이터를 들고, 새 판을 벌이는 — 네 글자가 전부 공격형인 유일한 조합 중 하나입니다. 변화와 압박을 연료로 쓰는 사람이며, AX·조직개편 같은 격변의 과제에서 최전선에 세울 인재입니다. 단, 평시의 반복 업무에선 급격히 시듭니다.',
+    t:['도전적인 목표를 주세요 — 쉬운 일은 이 사람에겐 벌칙입니다','속도가 빠르니 주변과의 싱크 포인트를 정기적으로 잡아주세요','성장이 멈췄다고 느끼는 순간이 이탈 시그널입니다'],c:'TMDH'},
+  'CANH':{e:'🔥',n:'불꽃 이야기꾼',o:'도전의 한복판에서, 사람의 서사로 판을 바꾼다',
+    d:'격변을 두려워하지 않고, 프로들과 부딪히며, 새로운 것을 시도하되 — 사람의 마음을 움직이는 것으로 승부합니다. 변화관리·체인지 커뮤니케이션의 타고난 선수입니다. 어려운 메시지를 조직에 전달해야 할 때, 이 사람의 언어가 필요합니다.',
+    t:['무대를 주세요 — 발표·퍼실리테이션에서 에너지가 폭발합니다','디테일 검증은 다른 사람과 짝지어 보완해주세요','반대 의견도 "이야기"로 설득하면 잘 듣습니다'],c:'TMDF'},
+  'CADF':{e:'🗡️',n:'외길 검객',o:'폭풍이 몰아쳐도 흔들리지 않고, 한 길을 벤다',
+    d:'압박 속에서 오히려 집중력이 올라가는 깊이형 전문가입니다. 치열한 환경, 실력 중심의 동료, 그리고 숫자 — 이 세 가지만 있으면 됩니다. 위기 상황의 정밀 분석, 마감이 목을 조르는 고난도 과제에서 진가가 드러납니다.',
+    t:['일의 난이도로 대우해 주세요 — 난이도가 곧 인정입니다','집중 시간을 지켜주세요, 잦은 호출이 가장 큰 방해입니다','성과를 조용히, 그러나 확실하게 보상해주세요'],c:'TMNH'},
+  'CADH':{e:'🎻',n:'깊은 울림의 거장',o:'치열함 속에서도, 사람의 결을 놓치지 않는다',
+    d:'거친 환경과 높은 기준 속에서 단련됐지만, 판단의 현은 언제나 사람을 향해 조율되어 있는 사람입니다. 실력으로 존중받고 마음으로 결정하는, 어려운 국면의 인사 판단(중대 징계·핵심인재 이탈 등)에서 무게 중심을 잡아줍니다.',
+    t:['논리로 시작해도 마지막엔 "사람에게 어떤 의미인지"를 함께 논의해주세요','높은 기준을 가진 만큼, 형식적인 칭찬은 안 통합니다','치열한 논쟁 후에는 관계 회복의 시간을 꼭 가져주세요'],c:'TMNF'},
+  'CMNF':{e:'🚀',n:'함께 나는 탐험가',o:'동료와 함께, 새 영역으로 날아오른다',
+    d:'도전을 즐기되 혼자가 아니라 팀으로 날아오르는 사람입니다. 데이터 기반으로 새 시도를 설계하고, 따뜻한 동료들과 함께 실행합니다. 파일럿 프로젝트·신규 제도 실험처럼 "처음 해보는 팀 단위 도전"의 이상적인 리더 혹은 엔진입니다.',
+    t:['혼자 하는 일만 주면 에너지가 꺼집니다 — 반드시 팀 과제로','실험의 실패를 학습으로 인정해주는 환경이 필수입니다','숫자로 된 중간 성과를 팀과 공유할 기회를 만들어주세요'],c:'TADH'},
+  'CMNH':{e:'🌈',n:'바람 타는 연결자',o:'변화의 바람을 타고, 사람과 사람을 잇는다',
+    d:'조직이 흔들릴 때 사람들 사이의 다리가 되는 유형입니다. 변화를 두려워하지 않고, 온기로 뭉친 팀을 사랑하며, 이야기로 판단합니다. 부서 간 갈등 조정, 세대 간 통역, 변화기의 조직문화 작업에서 이 사람의 연결력이 조직을 지탱합니다.',
+    t:['여러 부서를 오가는 역할을 주면 물 만난 고기가 됩니다','정밀 서류 작업은 최소화하거나 짝을 붙여주세요','"덕분에 이어졌다"는 말이 최고의 연료입니다'],c:'TADF'},
+  'CMDF':{e:'⚒️',n:'단단한 동반자',o:'함께 두드릴수록 단단해지는 대장장이',
+    d:'격무와 압박 속에서 팀과 함께 버티며, 한 분야의 깊이를 숫자로 증명해온 사람입니다. 화려한 개척보다 어려운 시기를 팀과 함께 통과하는 데서 존재감이 드러납니다. 장기 프로젝트의 마무리, 위기 국면의 실무 중심을 맡기세요.',
+    t:['"함께 고생한 기억"을 소중히 여기는 사람입니다 — 전우애를 인정해주세요','깊이를 쌓을 시간을 주되, 그 결과를 팀의 성과로 연결해주세요','묵묵하다고 괜찮은 게 아닙니다 — 먼저 안부를 물어주세요'],c:'TANH'},
+  'CMDH':{e:'🐋',n:'깊은 바다의 고래',o:'거친 바다의 가장 깊은 곳에서, 함께 헤엄친다',
+    d:'폭풍 같은 환경도, 깊은 전문성도, 따뜻한 동료애도, 사람 중심의 판단도 — 모두 큰 스케일로 품는 사람입니다. 요란하지 않지만 조직이 힘들 때 구성원들이 기대는 정서적 기둥이 됩니다. 오래 함께할수록 진가가 드러나는, 조직의 깊은 바다입니다.',
+    t:['단기 성과 지표로만 평가하면 이 사람의 가치를 놓칩니다','구성원들이 이 사람에게 기대는 보이지 않는 무게를 인정해주세요','깊은 대화의 시간이 어떤 보상보다 효과적입니다'],c:'TANF'},
+};
+
+/* ================= 상태 ================= */
+let qIdx = 0;
+let answers = [];
+let myType = null;
+let myScore = null;
+let saved = false;
+let liveCatchup=null, catchupPos=0;
+
+let live = { role:null, sid:null, pid:null, phase:null, q:-1, answeredQ:{} };
+let unsubs = {};
+let answersCache=[], typesCache=[], tallyCache=null, hostJoins=0, tallyTimer=null;
+
+function clearUnsubs(){ Object.values(unsubs).forEach(u=>{ try{u&&u();}catch(e){} }); unsubs={}; }
+function rid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+/* ================= 화면 전환 ================= */
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo({top:0});
+}
+function goIntro(){ clearUnsubs(); live.role=null; show('s-intro'); }
+function restart(){ qIdx=0; answers=[]; myType=null; saved=false;
+  document.getElementById('saveBtn').textContent='팀 지도에 내 도장 찍기 🀄';
+  startQuiz(); }
+
+/* ================= 퀴즈 (솔로/캐치업 공용) ================= */
+function goBack(){
+  if(liveCatchup){
+    if(catchupPos===0) return;
+    catchupPos--; qIdx=liveCatchup[catchupPos]; renderQ(); return;
+  }
+  if(qIdx===0){ show('s-intro'); return; }
+  qIdx--; renderQ();
+}
+function startQuiz(){ clearUnsubs(); live.role=null; liveCatchup=null; qIdx=0; answers=[]; renderQ(); show('s-quiz'); }
+function renderQ(){
+  const q = QUESTIONS[qIdx], ax = AXES[q.axis];
+  document.getElementById('qNum').textContent = qIdx+1;
+  document.getElementById('pBar').style.width = ((qIdx+1)/12*100)+'%';
+  document.getElementById('axisChip').textContent = ax.emoji+' '+ax.name;
+  document.getElementById('qScene').textContent = q.scene;
+  document.getElementById('qText').textContent = q.text;
+  const wrap = document.getElementById('optWrap');
+  wrap.innerHTML='';
+  [q.a,q.b].forEach(opt=>{
+    const b = document.createElement('button');
+    b.className='opt' + (answers[qIdx]===opt.v ? ' picked' : '');
+    b.innerHTML = `<span class="mark">${opt.e}</span><span>${opt.t}</span>`;
+    b.onclick = ()=>{ b.classList.add('picked'); setTimeout(()=>pick(opt.v),180); };
+    wrap.appendChild(b);
+  });
+}
+function pick(v){
+  answers[qIdx]=v;
+  if(liveCatchup){
+    catchupPos++;
+    if(catchupPos<liveCatchup.length){ qIdx=liveCatchup[catchupPos]; renderQ(); }
+    else { liveCatchup=null; finishLiveGuest(); }
+    return;
+  }
+  if(qIdx<11){ qIdx++; renderQ(); }
+  else finishQuiz();
+}
+function finishQuiz(){
+  const score=[0,0,0,0];
+  QUESTIONS.forEach((q,i)=>{ if(answers[i]==='A') score[q.axis]++; });
+  myScore = score;
+  myType = AXES.map((ax,i)=> score[i]>=2 ? ax.A : ax.B).join('');
+  playReveal();
+}
+
+/* ================= 도장 드롭 연출 ================= */
+function playReveal(){
+  show('s-reveal');
+  const letters = myType.split('');
+  for(let i=0;i<4;i++){
+    const slot = document.getElementById('slot'+i);
+    slot.classList.remove('done');
+    slot.querySelector('.stamp').innerHTML = letters[i]+'<small>'+KW[letters[i]]+'</small>';
+  }
+  const hints=['인주를 묻히는 중…','첫 번째 마음…','두 번째 마음…','세 번째 마음…','마지막 마음…'];
+  document.getElementById('revealHint').textContent=hints[0];
+  letters.forEach((_,i)=>{
+    setTimeout(()=>{
+      document.getElementById('slot'+i).classList.add('done');
+      document.getElementById('revealHint').textContent=hints[i+1];
+      if(navigator.vibrate) navigator.vibrate(40);
+    }, 700 + i*850);
+  });
+  setTimeout(()=>renderResult(), 700 + 4*850 + 900);
+}
+
+/* ================= 결과 ================= */
+function renderResult(){
+  const T = TYPES[myType];
+  document.getElementById('rEmoji').textContent = T.e;
+  document.getElementById('rCode').innerHTML = myType.split('').map(l=>`<span>${l}</span>`).join('');
+  document.getElementById('rName').textContent = T.n;
+  document.getElementById('rOne').innerHTML = '<b style="color:var(--seal)">'+myType.split('').map(l=>KW[l]).join(' · ')+'</b><br>"'+T.o+'"';
+  document.getElementById('rDesc').textContent = T.d;
+  document.getElementById('rTips').innerHTML = T.t.map(x=>`<li>💡 ${x}</li>`).join('');
+  const C = TYPES[T.c];
+  document.getElementById('rChemi').innerHTML =
+    `<span class="ce">${C.e}</span><div><b>환상의 케미 · ${T.c} ${C.n}</b><span>서로의 반대편을 채워주는, 최고의 협업 파트너</span></div>`;
+  document.getElementById('rBars').innerHTML = AXES.map((ax,i)=>{
+    const pct = Math.round(myScore[i]/3*100);
+    return `<div class="abar">
+      <div class="lab"><span class="l">${ax.aLabel}</span><span class="r">${ax.bLabel}</span></div>
+      <div class="track"><i class="fa" style="width:${pct}%"></i><i class="fb"></i></div>
+    </div>`;
+  }).join('');
+  if(live.role==='guest' && live.sid){
+    document.getElementById('saveBtn').textContent='✅ 팀 집계에 자동 반영 완료';
+    saved=true;
+  }
+  show('s-result');
+}
+
+/* ================= 솔로 결과 저장 ================= */
+async function saveResult(){
+  if(saved) return;
+  if(!needFb()) return;
+  const btn=document.getElementById('saveBtn');
+  btn.textContent='도장 찍는 중…';
+  try{
+    await addDoc(collection(db,'hbti_results'), { t: myType, ts: Date.now() });
+    saved=true;
+    btn.textContent='도장 완료! 🀄 팀 지도에 반영됐어요';
+  }catch(e){
+    btn.textContent='저장 실패 — 다시 눌러주세요';
+    console.error(e);
+  }
+}
+
+/* ================= 팀 대시보드 ================= */
+async function openTeam(){ show('s-team'); loadTeam(); }
+
+async function loadTeam(){
+  const body=document.getElementById('teamBody');
+  body.innerHTML='<div class="loading"><span class="spin">🀄</span><br>도장을 세는 중…</div>';
+  if(!fbReady){
+    body.innerHTML='<div class="team-card" style="text-align:center;padding:26px"><p style="font-weight:800">Firebase 설정 후 사용할 수 있습니다</p></div>';
+    document.getElementById('tCount').textContent=0;
+    return;
+  }
+  const counts={}; let total=0;
+  Object.keys(TYPES).forEach(t=>counts[t]=0);
+  try{
+    if(live.role==='guest' && live.sid){
+      // 라이브 참여자: 진행자가 게시한 요약 문서 1건만 읽음
+      const snap = await getDoc(doc(db,'hbti_sessions',live.sid,'summary','final'));
+      if(!snap.exists()){
+        document.getElementById('tCount').textContent=0;
+        body.innerHTML=`<div class="team-card" style="text-align:center;padding:26px">
+          <p style="font-weight:800">진행자가 최종 결과를 공개하면<br>여기에 표시됩니다</p>
+          <button class="btn ghost" style="margin-top:12px" onclick="loadTeam()">새로고침 ⟳</button></div>`;
+        return;
+      }
+      const d=snap.data(); total=d.total||0;
+      Object.entries(d.counts||{}).forEach(([t,c])=>{ if(counts[t]!==undefined) counts[t]=c; });
+    }else{
+      const qs = await getDocs(collection(db,'hbti_results'));
+      qs.forEach(docu=>{ const t=docu.data().t; if(counts[t]!==undefined){ counts[t]++; total++; } });
+    }
+  }catch(e){ console.error(e); }
+  document.getElementById('tCount').textContent=total;
+  if(total===0){
+    body.innerHTML=`<div class="team-card" style="text-align:center;padding:34px 18px">
+      <div style="font-size:44px">🗺️</div>
+      <p style="font-weight:800;margin-top:8px">아직 지도가 비어 있어요</p>
+      <p style="font-size:13.5px;color:var(--ink-soft)">첫 번째 도장의 주인공이 되어주세요!</p></div>`;
+    return;
+  }
+  body.innerHTML = teamStatsHTML(counts, total);
+}
+
+function teamStatsHTML(counts, total){
+  const axisA=[0,0,0,0];
+  Object.entries(counts).forEach(([t,c])=>{
+    t.split('').forEach((ch,i)=>{ if(ch===AXES[i].A) axisA[i]+=c; });
+  });
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const [topType, topCount] = sorted[0];
+  const TT = TYPES[topType];
+  const maxC = topCount;
+  const grid = Object.keys(TYPES).map(t=>{
+    const T=TYPES[t], c=counts[t];
+    return `<div class="cell ${c===maxC&&c>0?'hot':''} ${c===0?'zero':''}">
+      ${c>0?`<span class="c">${c}</span>`:''}
+      <span class="e">${T.e}</span><span class="n">${t}</span>
+    </div>`;
+  }).join('');
+  const bars = AXES.map((ax,i)=>{
+    const pct=Math.round(axisA[i]/total*100);
+    return `<div class="abar">
+      <div class="lab"><span class="l">${ax.aLabel} ${pct}%</span><span class="r">${100-pct}% ${ax.bLabel}</span></div>
+      <div class="track"><i class="fa" style="width:${pct}%"></i><i class="fb"></i></div>
+    </div>`;
+  }).join('');
+  const insights = buildInsights(axisA, total, sorted);
+  return `
+    <div class="face">
+      <span class="fe">${TT.e}</span>
+      <p class="ft">우리 팀의 얼굴</p>
+      <p class="fn">${TT.n}</p>
+      <p class="fs">${topCount}명 · "${TT.o}"</p>
+    </div>
+    <div class="team-card"><h3>🀄 유형 분포 지도</h3><div class="grid16">${grid}</div></div>
+    <div class="team-card"><h3>⚖️ 우리 팀의 네 가지 마음</h3>${bars}</div>
+    <div class="insight"><h3>🔍 지도가 들려주는 이야기</h3>${insights}</div>
+  `;
+}
+
+function buildInsights(axisA, total, sorted){
+  const p = axisA.map(a=>Math.round(a/total*100));
+  const out=[];
+  const ax0 = p[0]>=60 ? `우리 중 ${p[0]}%는 믿고 맡겨줄 때(T) 피어나는 사람들입니다. 서로에게 그런 리더, 그런 선배가 되어주고 있는지 — 한 번쯤 돌아볼 단서입니다.`
+    : p[0]<=40 ? `우리 중 ${100-p[0]}%는 흔들고 밀어줄 때(C) 크는 사람들입니다. 안정보다 자극을 갈망하는 팀 — 그 에너지를 담을 도전의 무대가 준비되어 있는지가 질문입니다.`
+    : `믿음(T)과 자극(C)이 절반씩 — 한 가지 리더십이 모두에게 맞을 수 없다는 것을, 우리 팀 스스로가 보여주고 있습니다.`;
+  const ax2 = p[2]>=55 ? `새 길(N)을 먼저 여는 사람이 ${p[2]}% — 우리 팀엔 개척의 에너지가 흐릅니다. 이 에너지가 갈 곳을 잃지 않도록, 실험의 무대를 마련해줄 때입니다.`
+    : p[2]<=45 ? `한우물(D)을 파는 사람이 ${100-p[2]}% — 우리 팀의 힘은 깊이에서 나옵니다. AX의 파도 속에서, 이 깊이를 지키면서 새것을 더하는 방법이 우리의 숙제입니다.`
+    : `새길(N)과 한우물(D)이 균형을 이룹니다. 길을 여는 사람과 그 길을 깊게 만드는 사람이 함께 있는, 좋은 생태계입니다.`;
+  const ax3 = p[3]>=55 ? `사람 문제 앞에서 데이터(F)를 먼저 여는 사람이 ${p[3]}%입니다. 숫자의 힘을 믿는 팀 — 다만 숫자 뒤의 이야기를 들어줄 공감(H)의 목소리도 소중히 지켜야 합니다.`
+    : p[3]<=45 ? `사람 문제 앞에서 이야기(H)를 먼저 듣는 사람이 ${100-p[3]}%입니다. 공감을 믿는 팀 — 그 직관을 뒷받침해줄 데이터(F)의 언어를 더하면 설득력이 완성됩니다.`
+    : `데이터(F)와 공감(H)이 나란히 — 숫자와 이야기, 어느 한쪽도 잃지 않은 팀입니다.`;
+  out.push(`<p>${ax0}</p>`,`<p>${ax2}</p>`,`<p>${ax3}</p>`);
+  const kinds = sorted.filter(([,c])=>c>0).length;
+  if(kinds>=10) out.push(`<p>16개 유형 중 ${kinds}개가 존재합니다. 우리는 생각보다 훨씬 서로 다른 사람들이고 — 그 다름이 이 팀의 자산입니다.</p>`);
+  else if(kinds<=4 && total>=10) out.push(`<p>우리 팀은 ${kinds}개 유형에 모여 있습니다. 닮은 사람들의 편안함 뒤에, 우리가 놓치고 있는 관점은 없을까요.</p>`);
+  return out.join('');
+}
+
+/* ================= 라이브: 공통 ================= */
+function countQ(q){
+  let a=0,b=0;
+  answersCache.forEach(x=>{ if(x.q===q){ x.v==='A'?a++:b++; } });
+  return {a,b};
+}
+function vsCardHTML(q, c){
+  const Q=QUESTIONS[q];
+  const tot=c.a+c.b;
+  const pa=tot? Math.round(c.a/tot*100):50;
+  return `<div class="vs-card">
+    <p class="q-scene">${Q.scene}</p>
+    <h2 class="q-text" style="min-height:auto;margin-bottom:10px">${Q.text}</h2>
+    <div class="vs-opt a"><span class="ve">${Q.a.e}</span><span class="vt">${Q.a.t}</span><b class="vn">${c.a}</b></div>
+    <div class="vs-opt b"><span class="ve">${Q.b.e}</span><span class="vt">${Q.b.t}</span><b class="vn">${c.b}</b></div>
+    <div class="vs-track"><i class="fa" style="width:${tot?pa:50}%"></i><i class="fb"></i></div>
+    <div class="vs-pct"><span class="l">${tot?pa:0}%</span><span style="color:var(--ink-soft)">${tot}명 응답</span><span class="r">${tot?100-pa:0}%</span></div>
+  </div>`;
+}
+
+/* ================= 라이브: 진행자 ================= */
+async function hostStart(){
+  if(!needFb()) return;
+  clearUnsubs();
+  live={ role:'host', sid:rid(), pid:null, phase:'lobby', q:-1, answeredQ:{} };
+  answersCache=[]; typesCache=[]; hostJoins=0;
+  try{
+    await setDoc(doc(db,'hbti_sessions',live.sid),{phase:'lobby',q:-1,ts:Date.now()});
+    await setDoc(doc(db,'hbti_meta','current'),{sid:live.sid,ts:Date.now()});
+  }catch(e){ alert('세션 생성 실패 — Firestore 규칙/네트워크를 확인해주세요.'); return; }
+  unsubs.joins = onSnapshot(collection(db,'hbti_sessions',live.sid,'joins'), s=>{
+    hostJoins=s.size;
+    document.getElementById('hCount').textContent=hostJoins;
+    pushTally();
+  });
+  unsubs.answers = onSnapshot(collection(db,'hbti_sessions',live.sid,'answers'), s=>{
+    answersCache = s.docs.map(d=>d.data());
+    pushTally();
+    if(live.phase==='question') renderHost();
+  });
+  unsubs.types = onSnapshot(collection(db,'hbti_sessions',live.sid,'types'), s=>{
+    typesCache = s.docs.map(d=>d.data().t);
+    if(live.phase==='final') renderHost();
+  });
+  document.getElementById('hostBtn').style.display='block';
+  show('s-host');
+  renderHost();
+}
+function pushTally(){
+  if(live.role!=='host' || !live.sid || tallyTimer) return;
+  tallyTimer=setTimeout(async ()=>{
+    tallyTimer=null;
+    const c=countQ(live.q);
+    try{ await setDoc(doc(db,'hbti_sessions',live.sid,'tally','current'),{q:live.q,a:c.a,b:c.b,joins:hostJoins}); }catch(e){}
+  }, 700);
+}
+async function hostNext(){
+  if(live.phase==='lobby'){ live.phase='question'; live.q=0; }
+  else if(live.phase==='question' && live.q<11){ live.q++; }
+  else if(live.phase==='question' && live.q===11){ live.phase='final'; }
+  else return;
+  try{ await setDoc(doc(db,'hbti_sessions',live.sid),{phase:live.phase,q:live.q},{merge:true}); }catch(e){}
+  pushTally();
+  renderHost();
+}
+async function publishSummary(){
+  const counts={}; let total=0;
+  Object.keys(TYPES).forEach(t=>counts[t]=0);
+  typesCache.forEach(t=>{ if(counts[t]!==undefined){ counts[t]++; total++; } });
+  try{ await setDoc(doc(db,'hbti_sessions',live.sid,'summary','final'),{counts,total,joins:hostJoins,ts:Date.now()}); }catch(e){}
+  return {counts,total};
+}
+async function renderHost(){
+  const body=document.getElementById('hostBody');
+  const btn=document.getElementById('hostBtn');
+  if(live.phase==='lobby'){
+    btn.textContent='첫 질문 공개 ▶';
+    const url = location.origin + location.pathname;
+    body.innerHTML=`<div class="lobby-box"><span class="be">📡</span>
+      <h3>참여자 입장을 기다리는 중</h3>
+      <p>아래 QR을 스캔하거나 링크로 접속하면 됩니다</p>
+      <div id="qrBox" style="display:flex;justify-content:center;margin:18px 0 10px"></div>
+      <p style="font-size:12px;word-break:break-all;color:var(--ink-soft)">${url}</p></div>`;
+    try{
+      if(window.QRCode) new QRCode(document.getElementById('qrBox'),{text:url,width:180,height:180,colorDark:'#26324B'});
+    }catch(e){}
+  }else if(live.phase==='question'){
+    btn.textContent = live.q<11 ? `다음 질문 (Q${live.q+2}) ▶` : '🎉 최종 결과 공개';
+    const c=countQ(live.q);
+    body.innerHTML=`<div style="font-weight:900;margin-bottom:10px">Q${live.q+1} / 12</div>
+      <div class="progress"><i style="width:${(live.q+1)/12*100}%"></i></div>`
+      + vsCardHTML(live.q, c);
+  }else if(live.phase==='final'){
+    btn.style.display='none';
+    const {counts,total}=await publishSummary();
+    let recap='';
+    for(let q=0;q<12;q++){
+      const c=countQ(q); const tot=c.a+c.b; const pa=tot?Math.round(c.a/tot*100):0;
+      recap+=`<div class="recap-row"><div class="rc-scene">Q${q+1} ${QUESTIONS[q].scene}</div>
+        <div class="vs-track" style="height:12px"><i class="fa" style="width:${tot?pa:50}%"></i><i class="fb"></i></div>
+        <div class="vs-pct" style="font-size:11.5px"><span class="l">${QUESTIONS[q].a.e} ${pa}%</span><span class="r">${100-pa}% ${QUESTIONS[q].b.e}</span></div></div>`;
+    }
+    const statsPart = total>0 ? teamStatsHTML(counts,total)
+      : `<div class="team-card" style="text-align:center;padding:26px"><p style="font-weight:800">참여자들이 개인 결과를 확인하면<br>유형 분포가 실시간으로 나타납니다</p></div>`;
+    body.innerHTML = `<div class="done-badge">🎉 12문항 완료 · 총 ${hostJoins}명 참여</div>`
+      + statsPart
+      + `<div class="team-card"><h3>📊 문항별 결과 리캡</h3>${recap}</div>`;
+  }
+}
+
+/* ================= 라이브: 참여자 ================= */
+async function joinLive(){
+  if(!needFb()) return;
+  clearUnsubs();
+  live={ role:'guest', sid:null, pid:rid(), phase:null, q:-2, answeredQ:{} };
+  answers=[]; tallyCache=null;
+  show('s-live');
+  document.getElementById('pQLabel').textContent='';
+  document.getElementById('liveBody').innerHTML=
+    `<div class="lobby-box"><span class="be">🔎</span><h3>세션을 찾는 중…</h3><p>진행자가 세션을 열면 자동으로 연결됩니다</p></div>
+     <button class="btn ghost" onclick="goIntro()">처음으로</button>`;
+  unsubs.meta = onSnapshot(doc(db,'hbti_meta','current'), async snap=>{
+    const d=snap.data();
+    if(!d || !d.sid) return;
+    if(live.sid===d.sid) return;
+    live.sid=d.sid; live.answeredQ={}; answers=[]; live.phase=null; live.q=-2;
+    try{ await setDoc(doc(db,'hbti_sessions',live.sid,'joins',live.pid),{ts:Date.now()}); }catch(e){}
+    if(unsubs.session) unsubs.session();
+    unsubs.session = onSnapshot(doc(db,'hbti_sessions',live.sid), s=>{
+      const st=s.data(); if(!st) return;
+      const changed = st.phase!==live.phase || st.q!==live.q;
+      live.phase=st.phase; live.q=st.q;
+      if(!changed) return;
+      if(st.phase==='lobby') renderGuestLobby();
+      else if(st.phase==='question') renderGuestQ();
+      else if(st.phase==='final') guestFinal();
+    });
+    if(unsubs.tally) unsubs.tally();
+    unsubs.tally = onSnapshot(doc(db,'hbti_sessions',live.sid,'tally','current'), s=>{
+      tallyCache = s.data()||null;
+      if(live.phase==='question' && live.answeredQ[live.q]) renderGuestAnswered();
+    });
+  });
+}
+function renderGuestLobby(){
+  document.getElementById('pQLabel').textContent='대기 중';
+  document.getElementById('liveBody').innerHTML=
+    `<div class="lobby-box"><span class="be">🀄</span><h3>입장 완료!</h3><p>진행자가 곧 첫 질문을 공개합니다</p></div>`;
+}
+function renderGuestQ(){
+  const q=live.q, Q=QUESTIONS[q];
+  document.getElementById('pQLabel').textContent=`Q${q+1} / 12`;
+  if(live.answeredQ[q]){ renderGuestAnswered(); return; }
+  const body=document.getElementById('liveBody');
+  body.innerHTML=`<p class="q-scene">${Q.scene}</p><h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
+  const wrap=document.getElementById('liveOpts');
+  [Q.a,Q.b].forEach(opt=>{
+    const b=document.createElement('button');
+    b.className='opt';
+    b.innerHTML=`<span class="mark">${opt.e}</span><span>${opt.t}</span>`;
+    b.onclick=async ()=>{
+      if(live.answeredQ[q]) return;
+      live.answeredQ[q]=true; answers[q]=opt.v;
+      b.classList.add('picked');
+      try{ await setDoc(doc(db,'hbti_sessions',live.sid,'answers',q+'_'+live.pid),{q, v:opt.v}); }catch(e){}
+      renderGuestAnswered();
+    };
+    wrap.appendChild(b);
+  });
+}
+function renderGuestAnswered(){
+  const q=live.q;
+  const c = (tallyCache && tallyCache.q===q) ? {a:tallyCache.a,b:tallyCache.b} : {a:0,b:0};
+  document.getElementById('liveBody').innerHTML=
+    `<div class="done-badge">✅ 답변 완료 — 실시간 집계</div>` + vsCardHTML(q,c)
+    + `<p class="mini-note">진행자가 다음 질문을 공개하면 자동으로 넘어갑니다</p>`;
+}
+function guestFinal(){
+  if(unsubs.session){ unsubs.session(); unsubs.session=null; }
+  if(unsubs.tally){ unsubs.tally(); unsubs.tally=null; }
+  const missing=[];
+  for(let i=0;i<12;i++) if(answers[i]!=='A'&&answers[i]!=='B') missing.push(i);
+  if(missing.length===0){ finishLiveGuest(); return; }
+  liveCatchup=missing; catchupPos=0;
+  qIdx=liveCatchup[0]; renderQ(); show('s-quiz');
+}
+function finishLiveGuest(){
+  const score=[0,0,0,0];
+  QUESTIONS.forEach((q,i)=>{ if(answers[i]==='A') score[q.axis]++; });
+  myScore=score;
+  myType=AXES.map((ax,i)=> score[i]>=2?ax.A:ax.B).join('');
+  try{ setDoc(doc(db,'hbti_sessions',live.sid,'types',live.pid),{t:myType}); }catch(e){}
+  saved=true;
+  playReveal();
+}
+
+/* ================= 초기화 ================= */
+(function init(){
+  // 진행자 링크는 ?host 파라미터가 있을 때만 노출
+  if(new URLSearchParams(location.search).has('host')){
+    const el=document.getElementById('hostLink');
+    if(el) el.style.display='block';
+  }
+  if(!fbReady){
+    const n=document.getElementById('setupNote');
+    if(n) n.style.display='block';
+  }
+})();
+
+Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,joinLive});
+
+</script>
 </body>
 </html>
