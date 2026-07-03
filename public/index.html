@@ -218,6 +218,32 @@ body{
 }
 .celebrate b{position:absolute;top:6px;font-size:26px;opacity:0;animation:celpop 1.15s ease forwards}
 @keyframes celpop{0%{opacity:0;transform:scale(.4) translateY(8px)}30%{opacity:1;transform:scale(1.12) translateY(0)}72%{opacity:1}100%{opacity:0;transform:scale(1) translateY(-10px)}}
+/* ===== 결과 공개(미리보기) / 팀 벽 ===== */
+.share-panel{background:#fff;border:2px dashed #E2E8F5;border-radius:18px;padding:16px;margin-bottom:14px;text-align:left;animation:fadeUp .3s ease both}
+.wall-input{width:100%;font-family:inherit;font-size:16px;font-weight:700;color:var(--ink);background:#fff;
+  border:2px solid #E2E8F5;border-radius:12px;padding:12px 14px;outline:none}
+.wall-input:focus{border-color:var(--sky)}
+.share-hint{font-size:12px;font-weight:800;color:var(--ink-soft);margin:14px 0 8px;letter-spacing:.02em}
+.share-note{font-size:12.5px;font-weight:800;color:var(--seal);text-align:center;margin-top:10px;min-height:1.1em}
+.wall-empty{text-align:center;font-size:13.5px;font-weight:700;color:var(--ink-soft);padding:22px 10px;line-height:1.6}
+.wall-bubble{background:#fff;border:1.5px solid #E7ECF7;border-radius:16px;padding:12px 14px;box-shadow:0 4px 12px rgba(38,50,75,.08);position:relative}
+.wall-bubble .wb-top{display:flex;align-items:center;gap:10px}
+.wall-bubble .wb-emoji{font-size:26px;flex:none;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.wall-bubble .wb-name{font-size:15px;font-weight:900;color:var(--ink);flex:1;min-width:0;word-break:break-all;line-height:1.25}
+.wall-bubble .wb-name.ph{color:#B5C0D5;font-weight:800}
+.wall-bubble .wb-code{display:flex;gap:4px;flex:none}
+.wall-bubble .wb-code span{width:23px;height:23px;border-radius:7px;background:#fff;border:2px dashed currentColor;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
+.wall-bubble .wb-line{font-size:13px;font-weight:600;color:var(--ink);line-height:1.5;margin-top:9px}
+.wall-grid{display:flex;flex-direction:column;gap:11px}
+.wall-grid .wall-bubble:nth-child(3n+1){transform:rotate(-1.2deg) scale(.99)}
+.wall-grid .wall-bubble:nth-child(3n+2){transform:rotate(1deg) scale(1.02)}
+.wall-grid .wall-bubble:nth-child(3n){transform:rotate(-.5deg)}
+.wall-grid .wall-bubble:nth-child(4n){margin-left:9px}
+.wall-grid .wall-bubble:nth-child(4n+3){margin-right:9px}
+@keyframes flyup{0%{transform:translateY(0) scale(1);opacity:1}55%{transform:translateY(-14px) scale(1.05) rotate(-3deg);opacity:1}100%{transform:translateY(-130px) scale(.55) rotate(-8deg);opacity:0}}
+.fly{animation:flyup .7s cubic-bezier(.4,0,.2,1) forwards}
+@keyframes shakex{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.shake{animation:shakex .4s ease}
 .r-name{font-size:26px;font-weight:900;letter-spacing:-.02em;margin-bottom:6px}
 .r-one{font-size:15px;color:var(--ink-soft);font-weight:600;margin-bottom:18px}
 .r-desc{
@@ -417,12 +443,25 @@ body{
       </div>
       <div class="chemi" id="rChemi"></div>
     </div>
-    <div class="stack">
+
+    <button class="btn ghost" id="shareOpenBtn" onclick="openShare()">🙋 내 결과 공개하기 (선택)</button>
+    <div class="share-panel" id="sharePanel" style="display:none">
+      <input class="wall-input" id="wallName" maxlength="20" placeholder="이름 또는 닉네임" oninput="updateWallPreview()" autocomplete="off">
+      <p class="share-hint">이렇게 공개돼요 👇</p>
+      <div id="wallPreview"></div>
+      <div class="stack" style="margin-top:12px">
+        <button class="btn" id="throwBtn" onclick="throwToWall()">🎈 벽에 날리기</button>
+        <button class="btn ghost" onclick="closeShare()">취소</button>
+      </div>
+      <p class="share-note" id="throwMsg"></p>
+    </div>
+
+    <div class="stack" style="margin-top:10px">
       <button class="btn seal" id="saveBtn" onclick="saveResult()">팀 지도에 내 도장 찍기 🀄</button>
       <button class="btn ghost" onclick="openTeam()">우리 팀 결과 보기 🗺️</button>
       <button class="btn ghost" onclick="restart()">다시 하기 ↺</button>
     </div>
-    <p class="mini-note">저장 시 유형 네 글자만 익명으로 집계됩니다</p>
+    <p class="mini-note">🀄 익명 집계와 🎈 이름 공개(벽)는 분리돼요 · 공개는 선택이며 이름을 남긴 사람만 벽에 표시됩니다</p>
   </section>
 
   <!-- ⑤ 팀 대시보드 -->
@@ -577,6 +616,7 @@ let liveCatchup=null, catchupPos=0;
 let live = { role:null, sid:null, pid:null, phase:null, q:-1, answeredQ:{} };
 let unsubs = {};
 let answersCache=[], typesCache=[], tallyCache=null, hostJoins=0, tallyTimer=null;
+let wallCache=[], wallThrown=false;
 
 function clearUnsubs(){ Object.values(unsubs).forEach(u=>{ try{u&&u();}catch(e){} }); unsubs={}; }
 function rid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
@@ -677,6 +717,12 @@ function playReveal(){
 /* ================= 결과 ================= */
 function renderResult(){
   const T = TYPES[myType];
+  // 결과 공개(벽) UI 초기화 — 새 결과마다 새로 시작
+  wallThrown=false;
+  const so=document.getElementById('shareOpenBtn'); if(so){ so.textContent='🙋 내 결과 공개하기 (선택)'; so.disabled=false; }
+  const sp=document.getElementById('sharePanel'); if(sp) sp.style.display='none';
+  const wn=document.getElementById('wallName'); if(wn) wn.value='';
+  const tm=document.getElementById('throwMsg'); if(tm) tm.textContent='';
   const rE = document.getElementById('rEmoji');
   rE.textContent = T.e;
   rE.style.background = AXIS_HEX[typeAxis(myType)]+'20';   // 대표축 색 옅은 원형 틴트
@@ -728,6 +774,93 @@ async function saveResult(){
   }
 }
 
+/* ================= 결과 공개(자발적) / 팀 벽 ================= */
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function hasBatchim(w){ if(!w) return false; const c=w.charCodeAt(w.length-1); return c>=0xAC00&&c<=0xD7A3 ? (c-0xAC00)%28!==0 : false; }
+function iyeyo(w){ return w + (hasBatchim(w)?'이에요':'예요'); }
+// 태그라인(o) 평서형 종결을 정중체로 — 표시 시점에만 가공, 데이터는 그대로
+const O_END={'연다':'열어요','그린다':'그려요','끝낸다':'끝내요','본다':'봐요','찾는다':'찾아요','심는다':'심어요','만든다':'만들어요','휘두른다':'휘둘러요','바꾼다':'바꿔요','벤다':'베어요','않는다':'않아요','날아오른다':'날아올라요','잇는다':'이어요','헤엄친다':'헤엄쳐요'};
+function polite(o){
+  const t=(o||'').trim();
+  for(const k in O_END){ if(t.endsWith(k)) return t.slice(0,-k.length)+O_END[k]; }
+  return iyeyo(t);   // 명사로 끝나는 태그라인
+}
+// 협업 한마디: "저는 [유형명]이에요 — [정중체 태그라인]"
+function wallLine(type){ const T=TYPES[type]; return T? `저는 ${iyeyo(T.n)} — ${polite(T.o)}` : ''; }
+// 벽 버블(미리보기 + 팀 벽 공용). name 은 사용자 입력 → 반드시 esc
+function wallBubbleHTML(name, type){
+  const T=TYPES[type]; if(!T) return '';
+  const col=AXIS_HEX[typeAxis(type)];
+  const nm=(name||'').trim();
+  const nameHtml = nm ? `<span class="wb-name">${esc(nm)}</span>` : `<span class="wb-name ph">(이름)</span>`;
+  const code=type.split('').map((l,i)=>`<span style="color:${AXIS_HEX[i]}">${l}</span>`).join('');
+  return `<div class="wall-bubble" style="border-left:4px solid ${col}">
+    <div class="wb-top">
+      <span class="wb-emoji" style="background:${col}20">${T.e}</span>
+      ${nameHtml}
+      <span class="wb-code">${code}</span>
+    </div>
+    <p class="wb-line">${wallLine(type)}</p>
+  </div>`;
+}
+function wallSectionHTML(list, withRefresh){
+  const valid=(list||[]).filter(w=>w&&w.name&&TYPES[w.type]);
+  const inner = valid.length
+    ? `<div class="wall-grid">${valid.map(w=>wallBubbleHTML(w.name,w.type)).join('')}</div>`
+    : `<div class="wall-empty">아직 아무도 안 날렸어요 —<br>첫 버블의 주인공이 되어보세요 🎈</div>`;
+  const refresh = withRefresh ? `<button class="btn ghost" style="margin-top:12px" onclick="loadTeam()">벽 새로고침 ⟳</button>` : '';
+  return `<div class="team-card"><h3>🎈 우리 팀의 마음 벽</h3>${inner}${refresh}</div>`;
+}
+function openShare(){
+  if(wallThrown || !myType) return;
+  const panel=document.getElementById('sharePanel');
+  panel.style.display='block';
+  document.getElementById('throwBtn').style.background=AXIS_HEX[typeAxis(myType)];
+  document.getElementById('throwMsg').textContent='';
+  updateWallPreview();
+  const inp=document.getElementById('wallName'); if(inp) inp.focus();
+}
+function closeShare(){ const p=document.getElementById('sharePanel'); if(p) p.style.display='none'; }
+function updateWallPreview(){
+  const name=(document.getElementById('wallName')||{}).value||'';
+  document.getElementById('wallPreview').innerHTML=wallBubbleHTML(name, myType);
+}
+async function throwToWall(){
+  if(wallThrown) return;
+  if(!needFb()) return;
+  const inp=document.getElementById('wallName');
+  const msg=document.getElementById('throwMsg');
+  const name=(inp.value||'').trim();
+  if(!name){
+    inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake');
+    msg.textContent='이름을 입력해주세요';
+    return;
+  }
+  wallThrown=true;
+  const btn=document.getElementById('throwBtn'); btn.disabled=true;
+  msg.textContent='';
+  const bubble=document.getElementById('wallPreview').firstElementChild;
+  if(bubble) bubble.classList.add('fly');
+  try{
+    const payload={ name, type: myType, ts: Date.now() };
+    if(live.role==='guest' && live.sid){
+      await setDoc(doc(db,'hbti_sessions',live.sid,'wall',live.pid), payload);   // create only
+    }else{
+      await addDoc(collection(db,'hbti_wall'), payload);                          // create only
+    }
+    setTimeout(()=>{
+      closeShare();
+      const so=document.getElementById('shareOpenBtn');
+      if(so){ so.textContent='✅ 벽에 올렸어요'; so.disabled=true; }
+    }, 680);
+  }catch(e){
+    console.error(e);
+    wallThrown=false; btn.disabled=false;
+    if(bubble) bubble.classList.remove('fly');
+    msg.textContent='전송 실패 — 다시 시도해주세요';
+  }
+}
+
 /* ================= 팀 대시보드 ================= */
 async function openTeam(){ show('s-team'); loadTeam(); }
 
@@ -739,6 +872,19 @@ async function loadTeam(){
     document.getElementById('tCount').textContent=0;
     return;
   }
+  // 팀 벽 버블 로드 (열 때 1회) — 라이브면 세션 벽, 솔로면 전역 벽
+  let wall=[];
+  try{
+    if(live.role==='guest' && live.sid){
+      const ws=await getDocs(collection(db,'hbti_sessions',live.sid,'wall'));
+      wall=ws.docs.map(d=>d.data());
+    }else{
+      const ws=await getDocs(collection(db,'hbti_wall'));
+      wall=ws.docs.map(d=>d.data());
+    }
+  }catch(e){ console.error(e); }
+  const wallHTML = wallSectionHTML(wall, true);
+
   const counts={}; let total=0;
   Object.keys(TYPES).forEach(t=>counts[t]=0);
   try{
@@ -748,8 +894,8 @@ async function loadTeam(){
       if(!snap.exists()){
         document.getElementById('tCount').textContent=0;
         body.innerHTML=`<div class="team-card" style="text-align:center;padding:26px">
-          <p style="font-weight:800">진행자가 최종 결과를 공개하면<br>여기에 표시됩니다</p>
-          <button class="btn ghost" style="margin-top:12px" onclick="loadTeam()">새로고침 ⟳</button></div>`;
+          <p style="font-weight:800">진행자가 최종 결과를 공개하면<br>유형 분포가 여기에 표시됩니다</p>
+          <button class="btn ghost" style="margin-top:12px" onclick="loadTeam()">새로고침 ⟳</button></div>` + wallHTML;
         return;
       }
       const d=snap.data(); total=d.total||0;
@@ -760,14 +906,13 @@ async function loadTeam(){
     }
   }catch(e){ console.error(e); }
   document.getElementById('tCount').textContent=total;
-  if(total===0){
-    body.innerHTML=`<div class="team-card" style="text-align:center;padding:34px 18px">
-      <div style="font-size:44px">🗺️</div>
-      <p style="font-weight:800;margin-top:8px">아직 지도가 비어 있어요</p>
-      <p style="font-size:13.5px;color:var(--ink-soft)">첫 번째 도장의 주인공이 되어주세요!</p></div>`;
-    return;
-  }
-  body.innerHTML = teamStatsHTML(counts, total);
+  const statsHTML = (total===0)
+    ? `<div class="team-card" style="text-align:center;padding:34px 18px">
+        <div style="font-size:44px">🗺️</div>
+        <p style="font-weight:800;margin-top:8px">아직 지도가 비어 있어요</p>
+        <p style="font-size:13.5px;color:var(--ink-soft)">첫 번째 도장의 주인공이 되어주세요!</p></div>`
+    : teamStatsHTML(counts, total);
+  body.innerHTML = statsHTML + wallHTML;
 }
 
 function teamStatsHTML(counts, total){
@@ -857,7 +1002,7 @@ async function hostStart(){
   clearUnsubs();
   const sid = rid();
   live={ role:'host', sid, pid:null, phase:'lobby', q:-1, answeredQ:{} };
-  answersCache=[]; typesCache=[]; hostJoins=0;
+  answersCache=[]; typesCache=[]; hostJoins=0; wallCache=[];
   // 1) 세션 문서 생성
   try{
     await setDoc(doc(db,'hbti_sessions',sid),{phase:'lobby',q:-1,ts:Date.now()});
@@ -889,6 +1034,11 @@ async function hostStart(){
   });
   unsubs.types = onSnapshot(collection(db,'hbti_sessions',sid,'types'), s=>{
     typesCache = s.docs.map(d=>d.data().t);
+    if(live.phase==='final') renderHost();
+  });
+  // 팀 벽(자발적 실명 공개) 실시간 구독 — 진행자 화면
+  unsubs.wall = onSnapshot(collection(db,'hbti_sessions',sid,'wall'), s=>{
+    wallCache = s.docs.map(d=>d.data());
     if(live.phase==='final') renderHost();
   });
   document.getElementById('hostBtn').style.display='block';
@@ -953,6 +1103,7 @@ async function renderHost(){
       : `<div class="team-card" style="text-align:center;padding:26px"><p style="font-weight:800">참여자들이 개인 결과를 확인하면<br>유형 분포가 실시간으로 나타납니다</p></div>`;
     body.innerHTML = `<div class="done-badge">🎉 12문항 완료 · 총 ${hostJoins}명 참여</div>`
       + statsPart
+      + wallSectionHTML(wallCache, false)
       + `<div class="team-card"><h3>📊 문항별 결과 리캡</h3>${recap}</div>`;
   }
 }
@@ -1077,7 +1228,7 @@ function finishLiveGuest(){
   }
 })();
 
-Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,joinLive});
+Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,joinLive,openShare,closeShare,updateWallPreview,throwToWall});
 
 </script>
 </body>
