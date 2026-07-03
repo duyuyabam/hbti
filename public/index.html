@@ -787,7 +787,7 @@ function pushTally(){
     tallyTimer=null;
     const c=countQ(live.q);
     try{ await setDoc(doc(db,'hbti_sessions',live.sid,'tally','current'),{q:live.q,a:c.a,b:c.b,joins:hostJoins}); }catch(e){}
-  }, 700);
+  }, 1200);
 }
 async function hostNext(){
   if(live.phase==='lobby'){ live.phase='question'; live.q=0; }
@@ -847,20 +847,28 @@ async function renderHost(){
 async function joinLive(){
   if(!needFb()) return;
   clearUnsubs();
-  live={ role:'guest', sid:null, pid:rid(), phase:null, q:-2, answeredQ:{} };
+  live={ role:'guest', sid:null, pid:rid(), phase:null, q:-2, answeredQ:{}, joined:false };
   answers=[]; tallyCache=null;
   show('s-live');
   document.getElementById('pQLabel').textContent='';
   document.getElementById('liveBody').innerHTML=
     `<div class="lobby-box"><span class="be">🔎</span><h3>세션을 찾는 중…</h3><p>진행자가 세션을 열면 자동으로 연결됩니다</p></div>
      <button class="btn ghost" onclick="goIntro()">처음으로</button>`;
+  // meta 리스너: 세션 sid를 "한 번" 확보하기 위한 용도. 확보 즉시 해제해 상시 연결을 줄인다.
   unsubs.meta = onSnapshot(doc(db,'hbti_meta','current'), async snap=>{
     const d=snap.data();
     if(!d || !d.sid) return;
     if(live.sid===d.sid) return;
     live.sid=d.sid; live.answeredQ={}; answers=[]; live.phase=null; live.q=-2;
-    try{ await setDoc(doc(db,'hbti_sessions',live.sid,'joins',live.pid),{ts:Date.now()}); }catch(e){}
-    if(unsubs.session) unsubs.session();
+    // sid 확보 완료 → meta 리스너 즉시 해제 (상시 리스너에서 제외)
+    try{ if(unsubs.meta){ unsubs.meta(); unsubs.meta=null; } }catch(e){}
+    // join 기록은 세션당 1회만 (중복 쓰기 방지)
+    if(!live.joined){
+      live.joined=true;
+      try{ await setDoc(doc(db,'hbti_sessions',live.sid,'joins',live.pid),{ts:Date.now()}); }catch(e){}
+    }
+    // guest가 상시 유지하는 유일한 리스너: session 상태 1개
+    try{ if(unsubs.session){ unsubs.session(); unsubs.session=null; } }catch(e){}
     unsubs.session = onSnapshot(doc(db,'hbti_sessions',live.sid), s=>{
       const st=s.data(); if(!st) return;
       const changed = st.phase!==live.phase || st.q!==live.q;
@@ -870,12 +878,21 @@ async function joinLive(){
       else if(st.phase==='question') renderGuestQ();
       else if(st.phase==='final') guestFinal();
     });
-    if(unsubs.tally) unsubs.tally();
+    // tally(집계) 리스너는 여기서 만들지 않는다 — 답변 제출 후에만 subscribeTally()로 구독
+  });
+}
+// tally(집계) 리스너: 답변 제출 후에만 구독하고, 문항이 바뀌면 해제한다. (상시 연결 최소화)
+function unsubTally(){
+  try{ if(unsubs.tally){ unsubs.tally(); unsubs.tally=null; } }catch(e){}
+}
+function subscribeTally(){
+  if(!fbReady || !live.sid || unsubs.tally) return;   // 중복 구독 방지
+  try{
     unsubs.tally = onSnapshot(doc(db,'hbti_sessions',live.sid,'tally','current'), s=>{
       tallyCache = s.data()||null;
       if(live.phase==='question' && live.answeredQ[live.q]) renderGuestAnswered();
     });
-  });
+  }catch(e){}
 }
 function renderGuestLobby(){
   document.getElementById('pQLabel').textContent='대기 중';
@@ -883,9 +900,10 @@ function renderGuestLobby(){
     `<div class="lobby-box"><span class="be">🀄</span><h3>입장 완료!</h3><p>진행자가 곧 첫 질문을 공개합니다</p></div>`;
 }
 function renderGuestQ(){
+  unsubTally();   // 문항 전환: 이전 문항의 tally 리스너 해제 (상시로 켜두지 않음)
   const q=live.q, Q=QUESTIONS[q];
   document.getElementById('pQLabel').textContent=`Q${q+1} / 12`;
-  if(live.answeredQ[q]){ renderGuestAnswered(); return; }
+  if(live.answeredQ[q]){ subscribeTally(); renderGuestAnswered(); return; }
   const body=document.getElementById('liveBody');
   body.innerHTML=`<p class="q-scene">${Q.scene}</p><h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
   const wrap=document.getElementById('liveOpts');
@@ -894,10 +912,11 @@ function renderGuestQ(){
     b.className='opt';
     b.innerHTML=`<span class="mark">${opt.e}</span><span>${opt.t}</span>`;
     b.onclick=async ()=>{
-      if(live.answeredQ[q]) return;
+      if(live.answeredQ[q]) return;   // answer 쓰기는 문항당 1회로 제한
       live.answeredQ[q]=true; answers[q]=opt.v;
       b.classList.add('picked');
       try{ await setDoc(doc(db,'hbti_sessions',live.sid,'answers',q+'_'+live.pid),{q, v:opt.v}); }catch(e){}
+      subscribeTally();   // 답변 제출 후에만 tally 구독 시작
       renderGuestAnswered();
     };
     wrap.appendChild(b);
@@ -911,8 +930,7 @@ function renderGuestAnswered(){
     + `<p class="mini-note">진행자가 다음 질문을 공개하면 자동으로 넘어갑니다</p>`;
 }
 function guestFinal(){
-  if(unsubs.session){ unsubs.session(); unsubs.session=null; }
-  if(unsubs.tally){ unsubs.tally(); unsubs.tally=null; }
+  clearUnsubs();   // 최종 단계: 남아있는 모든 guest 리스너(session/tally/meta) 즉시 해제
   const missing=[];
   for(let i=0;i<12;i++) if(answers[i]!=='A'&&answers[i]!=='B') missing.push(i);
   if(missing.length===0){ finishLiveGuest(); return; }
