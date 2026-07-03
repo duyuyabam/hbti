@@ -15,6 +15,11 @@
   --gold:#F5B942;
   --mint:#37B98C;
   --sky:#4C7DF0;
+  /* 4축 컬러 시스템 */
+  --axis-boss:#E5484D;   /* 상사 T/C */
+  --axis-peer:#F5B942;   /* 동료 A/M */
+  --axis-grow:#37B98C;   /* 성장 N/D */
+  --axis-judge:#4C7DF0;  /* 판단 F/H */
   --radius:22px;
   --shadow:0 10px 30px rgba(38,50,75,.10);
 }
@@ -439,6 +444,10 @@ const AXES = [
   {key:3, name:'판단',  emoji:'⚖️', A:'F', B:'H', aKw:'데이터', bKw:'공감',   aLabel:'F 숫자를 먼저 연다', bLabel:'이야기를 먼저 듣는다 H'},
 ];
 const KW = {T:'믿음',C:'자극',A:'에이스',M:'단짝',N:'새길',D:'한우물',F:'데이터',H:'공감'};
+// 4축 컬러 (AXES 순서: 0 상사 / 1 동료 / 2 성장 / 3 판단) — 스타일 전용
+const AXIS_HEX = ['#E5484D','#F5B942','#37B98C','#4C7DF0'];
+// 유형 그리드 틴트용 "대표 축": 유형코드 4글자를 고르게 4색으로 분산 (첫 글자 기준 아님)
+function typeAxis(code){ let s=0; for(const ch of code) s+=ch.charCodeAt(0); return s%4; }
 
 const QUESTIONS = [
   // 상사 축 (0) — T 믿음 vs C 자극
@@ -565,16 +574,20 @@ function sceneInner(sceneStr){
   const text  = sp>0 ? sceneStr.slice(sp+1) : sceneStr;
   return `<span class="scene-emoji">${emoji}</span><span>${text}</span>`;
 }
-function sceneCardHTML(sceneStr){
-  return `<div class="scene-card"><span class="scene-label">이런 상황입니다</span>`
+function sceneCardHTML(sceneStr, axis){
+  const c = (typeof axis==='number' && AXIS_HEX[axis]) ? AXIS_HEX[axis] : 'var(--seal)';
+  return `<div class="scene-card" style="border-left-color:${c}"><span class="scene-label">이런 상황입니다</span>`
     + `<p class="scene-text">${sceneInner(sceneStr)}</p></div>`;
 }
 function renderQ(){
   const q = QUESTIONS[qIdx], ax = AXES[q.axis];
   document.getElementById('qNum').textContent = qIdx+1;
   document.getElementById('pBar').style.width = ((qIdx+1)/12*100)+'%';
-  document.getElementById('axisChip').textContent = ax.emoji+' '+ax.name;
-  document.getElementById('qScene').innerHTML = sceneCardHTML(q.scene);
+  const chip = document.getElementById('axisChip');
+  chip.textContent = ax.emoji+' '+ax.name;
+  chip.style.color = AXIS_HEX[q.axis];
+  chip.style.borderColor = AXIS_HEX[q.axis];
+  document.getElementById('qScene').innerHTML = sceneCardHTML(q.scene, q.axis);
   document.getElementById('qText').textContent = q.text;
   const wrap = document.getElementById('optWrap');
   wrap.innerHTML='';
@@ -641,8 +654,8 @@ function renderResult(){
   document.getElementById('rBars').innerHTML = AXES.map((ax,i)=>{
     const pct = Math.round(myScore[i]/3*100);
     return `<div class="abar">
-      <div class="lab"><span class="l">${ax.aLabel}</span><span class="r">${ax.bLabel}</span></div>
-      <div class="track"><i class="fa" style="width:${pct}%"></i><i class="fb"></i></div>
+      <div class="lab"><span class="l" style="color:${AXIS_HEX[i]}">${ax.aLabel}</span><span class="r" style="color:var(--ink-soft)">${ax.bLabel}</span></div>
+      <div class="track"><i class="fa" style="width:${pct}%;background:${AXIS_HEX[i]}"></i><i class="fb" style="background:#E9EEFF"></i></div>
     </div>`;
   }).join('');
   if(live.role==='guest' && live.sid){
@@ -721,7 +734,11 @@ function teamStatsHTML(counts, total){
   const maxC = topCount;
   const grid = Object.keys(TYPES).map(t=>{
     const T=TYPES[t], c=counts[t];
-    return `<div class="cell ${c===maxC&&c>0?'hot':''} ${c===0?'zero':''}">
+    const isHot = c===maxC && c>0;
+    const col = AXIS_HEX[typeAxis(t)];
+    // hot(최다) 셀은 기존 강조 유지, 그 외에는 대표 축 색으로 은은한 틴트
+    const tint = isHot ? '' : ` style="border-color:${col}59;background:${col}14"`;
+    return `<div class="cell ${isHot?'hot':''} ${c===0?'zero':''}"${tint}>
       ${c>0?`<span class="c">${c}</span>`:''}
       <span class="e">${T.e}</span><span class="n">${t}</span>
     </div>`;
@@ -729,8 +746,8 @@ function teamStatsHTML(counts, total){
   const bars = AXES.map((ax,i)=>{
     const pct=Math.round(axisA[i]/total*100);
     return `<div class="abar">
-      <div class="lab"><span class="l">${ax.aLabel} ${pct}%</span><span class="r">${100-pct}% ${ax.bLabel}</span></div>
-      <div class="track"><i class="fa" style="width:${pct}%"></i><i class="fb"></i></div>
+      <div class="lab"><span class="l" style="color:${AXIS_HEX[i]}">${ax.aLabel} ${pct}%</span><span class="r" style="color:var(--ink-soft)">${100-pct}% ${ax.bLabel}</span></div>
+      <div class="track"><i class="fa" style="width:${pct}%;background:${AXIS_HEX[i]}"></i><i class="fb" style="background:#E9EEFF"></i></div>
     </div>`;
   }).join('');
   const insights = buildInsights(axisA, total, sorted);
@@ -958,7 +975,7 @@ function renderGuestQ(){
   document.getElementById('pQLabel').textContent=`Q${q+1} / 12`;
   if(live.answeredQ[q]){ subscribeTally(); renderGuestAnswered(); return; }
   const body=document.getElementById('liveBody');
-  body.innerHTML=`${sceneCardHTML(Q.scene)}<h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
+  body.innerHTML=`${sceneCardHTML(Q.scene, Q.axis)}<h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
   const wrap=document.getElementById('liveOpts');
   [Q.a,Q.b].forEach(opt=>{
     const b=document.createElement('button');
