@@ -383,7 +383,10 @@ body{
       </span>
     </div>
     <div id="hostBody"></div>
-    <div class="host-ctrl"><button class="btn seal" id="hostBtn" onclick="hostNext()">참여자 입장 받는 중 — 첫 질문 공개 ▶</button></div>
+    <div class="host-ctrl" style="display:flex;gap:10px">
+      <button class="btn ghost" id="hostPrevBtn" onclick="hostPrev()" style="flex:0 0 auto;width:auto;display:none">◀ 이전 질문</button>
+      <button class="btn seal" id="hostBtn" onclick="hostNext()" style="flex:1 1 0;width:auto;min-width:0">참여자 입장 받는 중 — 첫 질문 공개 ▶</button>
+    </div>
     <p class="mini-note">이 화면을 스크린에 띄우고 진행하세요 · 통계는 실시간 자동 갱신</p>
   </section>
 
@@ -617,6 +620,7 @@ let live = { role:null, sid:null, pid:null, phase:null, q:-1, answeredQ:{} };
 let unsubs = {};
 let answersCache=[], typesCache=[], tallyCache=null, hostJoins=0, tallyTimer=null;
 let wallCache=[], wallThrown=false;
+let guestRevisit=false;   // 참여자 답변완료 화면이 "이전 질문 재방문"인지 여부
 
 function clearUnsubs(){ Object.values(unsubs).forEach(u=>{ try{u&&u();}catch(e){} }); unsubs={}; }
 function rid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
@@ -1062,6 +1066,14 @@ async function hostNext(){
   pushTally();
   renderHost();
 }
+// 이전 질문으로 (다음 질문과 동일 메커니즘 역방향). 집계 데이터는 삭제하지 않고 보존.
+async function hostPrev(){
+  if(live.phase!=='question' || live.q<=0) return;   // 첫 질문(q=0)이면 로비로 안 감
+  live.q--;
+  try{ await setDoc(doc(db,'hbti_sessions',live.sid),{phase:'question',q:live.q},{merge:true}); }catch(e){}
+  pushTally();   // 그 질문의 기존 집계를 다시 게시(참여자 동기화)
+  renderHost();
+}
 async function publishSummary(){
   const counts={}; let total=0;
   Object.keys(TYPES).forEach(t=>counts[t]=0);
@@ -1072,7 +1084,9 @@ async function publishSummary(){
 async function renderHost(){
   const body=document.getElementById('hostBody');
   const btn=document.getElementById('hostBtn');
+  const prevBtn=document.getElementById('hostPrevBtn');
   if(live.phase==='lobby'){
+    if(prevBtn) prevBtn.style.display='none';
     btn.textContent='첫 질문 공개 ▶';
     const url = location.origin + location.pathname;
     body.innerHTML=`<div class="lobby-box"><span class="be">📡</span>
@@ -1084,6 +1098,8 @@ async function renderHost(){
       if(window.QRCode) new QRCode(document.getElementById('qrBox'),{text:url,width:180,height:180,colorDark:'#26324B'});
     }catch(e){}
   }else if(live.phase==='question'){
+    btn.style.display='block';
+    if(prevBtn) prevBtn.style.display = live.q>0 ? 'block' : 'none';   // 첫 질문이면 숨김
     btn.textContent = live.q<11 ? `다음 질문 (Q${live.q+2}) ▶` : '🎉 최종 결과 공개';
     const c=countQ(live.q);
     body.innerHTML=`<div style="font-weight:900;margin-bottom:10px">Q${live.q+1} / 12</div>
@@ -1091,6 +1107,7 @@ async function renderHost(){
       + vsCardHTML(live.q, c);
   }else if(live.phase==='final'){
     btn.style.display='none';
+    if(prevBtn) prevBtn.style.display='none';
     const {counts,total}=await publishSummary();
     let recap='';
     for(let q=0;q<12;q++){
@@ -1171,7 +1188,7 @@ function renderGuestQ(){
   unsubTally();   // 문항 전환: 이전 문항의 tally 리스너 해제 (상시로 켜두지 않음)
   const q=live.q, Q=QUESTIONS[q];
   document.getElementById('pQLabel').textContent=`Q${q+1} / 12`;
-  if(live.answeredQ[q]){ subscribeTally(); renderGuestAnswered(); return; }
+  if(live.answeredQ[q]){ subscribeTally(); renderGuestAnswered(true); return; }   // 이미 답한 질문(이전질문 재방문 포함) — 변경 불가, 집계만 다시 봄
   const body=document.getElementById('liveBody');
   body.innerHTML=`${sceneCardHTML(Q.scene, Q.axis)}<h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
   const wrap=document.getElementById('liveOpts');
@@ -1185,17 +1202,21 @@ function renderGuestQ(){
       b.classList.add('picked');
       try{ await setDoc(doc(db,'hbti_sessions',live.sid,'answers',q+'_'+live.pid),{q, v:opt.v}); }catch(e){}
       subscribeTally();   // 답변 제출 후에만 tally 구독 시작
-      renderGuestAnswered();
+      renderGuestAnswered(false);   // 방금 답변
     };
     wrap.appendChild(b);
   });
 }
-function renderGuestAnswered(){
+function renderGuestAnswered(revisit){
+  if(typeof revisit==='boolean') guestRevisit=revisit;   // 명시 호출 시에만 갱신(집계 갱신 재렌더는 유지)
   const q=live.q;
   const c = (tallyCache && tallyCache.q===q) ? {a:tallyCache.a,b:tallyCache.b} : {a:0,b:0};
+  const badge = guestRevisit
+    ? '✅ 이미 답하셨어요 — 결과를 함께 보고 있어요'
+    : '✅ 답변 완료 — 실시간 집계';
   document.getElementById('liveBody').innerHTML=
-    `<div class="done-badge">✅ 답변 완료 — 실시간 집계</div>` + vsCardHTML(q,c)
-    + `<p class="mini-note">진행자가 다음 질문을 공개하면 자동으로 넘어갑니다</p>`;
+    `<div class="done-badge">${badge}</div>` + vsCardHTML(q,c)
+    + `<p class="mini-note">진행자가 질문을 옮기면 자동으로 넘어갑니다</p>`;
 }
 function guestFinal(){
   clearUnsubs();   // 최종 단계: 남아있는 모든 guest 리스너(session/tally/meta) 즉시 해제
@@ -1228,7 +1249,7 @@ function finishLiveGuest(){
   }
 })();
 
-Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,joinLive,openShare,closeShare,updateWallPreview,throwToWall});
+Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,joinLive,openShare,closeShare,updateWallPreview,throwToWall});
 
 </script>
 </body>
