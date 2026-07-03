@@ -103,7 +103,23 @@ body{
   padding:10px 16px;border-radius:14px;margin-bottom:14px;
   letter-spacing:-.01em;
 }
-.q-text{font-size:22px;font-weight:900;letter-spacing:-.02em;margin-bottom:24px;min-height:66px}
+.q-text{font-size:24px;font-weight:900;letter-spacing:-.02em;line-height:1.32;margin:18px 0 28px}
+/* 상황설명 "장면 카드" — 질문 위 상단, 상황 지문처럼 보이게 */
+.scene-card{
+  background:linear-gradient(0deg,var(--paper),#FFFDF6);
+  border:1.5px solid #E7ECF7;border-left:6px solid var(--seal);
+  border-radius:14px;padding:13px 16px;
+}
+.scene-label{
+  display:block;font-size:11px;font-weight:800;color:var(--ink-soft);
+  letter-spacing:.1em;margin-bottom:7px;
+}
+.scene-text{
+  display:flex;align-items:center;gap:11px;
+  font-size:15.5px;font-weight:700;color:var(--ink);line-height:1.5;
+  letter-spacing:-.01em;word-break:keep-all;
+}
+.scene-text .scene-emoji{font-size:25px;flex:none;line-height:1.1}
 .opt{
   width:100%;text-align:left;cursor:pointer;font-family:inherit;
   background:#fff;border:2.5px solid #E2E8F5;border-radius:18px;
@@ -327,7 +343,7 @@ body{
       <div class="axis-chip" id="axisChip">🧑‍✈️ 상사</div>
     </div>
     <div class="progress"><i id="pBar" style="width:8%"></i></div>
-    <p class="q-scene" id="qScene"></p>
+    <div id="qScene"></div>
     <h2 class="q-text" id="qText"></h2>
     <div id="optWrap"></div>
   </section>
@@ -542,12 +558,23 @@ function goBack(){
   qIdx--; renderQ();
 }
 function startQuiz(){ clearUnsubs(); live.role=null; liveCatchup=null; qIdx=0; answers=[]; renderQ(); show('s-quiz'); }
+// 장면 카드: 상황설명 문자열(앞 이모지 + 본문)을 상단 카드 마크업으로 변환
+function sceneInner(sceneStr){
+  const sp = sceneStr.indexOf(' ');
+  const emoji = sp>0 ? sceneStr.slice(0,sp) : '';
+  const text  = sp>0 ? sceneStr.slice(sp+1) : sceneStr;
+  return `<span class="scene-emoji">${emoji}</span><span>${text}</span>`;
+}
+function sceneCardHTML(sceneStr){
+  return `<div class="scene-card"><span class="scene-label">이런 상황입니다</span>`
+    + `<p class="scene-text">${sceneInner(sceneStr)}</p></div>`;
+}
 function renderQ(){
   const q = QUESTIONS[qIdx], ax = AXES[q.axis];
   document.getElementById('qNum').textContent = qIdx+1;
   document.getElementById('pBar').style.width = ((qIdx+1)/12*100)+'%';
   document.getElementById('axisChip').textContent = ax.emoji+' '+ax.name;
-  document.getElementById('qScene').textContent = q.scene;
+  document.getElementById('qScene').innerHTML = sceneCardHTML(q.scene);
   document.getElementById('qText').textContent = q.text;
   const wrap = document.getElementById('optWrap');
   wrap.innerHTML='';
@@ -751,7 +778,7 @@ function vsCardHTML(q, c){
   const pa=tot? Math.round(c.a/tot*100):50;
   return `<div class="vs-card">
     <p class="q-scene">${Q.scene}</p>
-    <h2 class="q-text" style="min-height:auto;margin-bottom:10px">${Q.text}</h2>
+    <h2 class="q-text" style="margin:6px 0 10px">${Q.text}</h2>
     <div class="vs-opt a"><span class="ve">${Q.a.e}</span><span class="vt">${Q.a.t}</span><b class="vn">${c.a}</b></div>
     <div class="vs-opt b"><span class="ve">${Q.b.e}</span><span class="vt">${Q.b.t}</span><b class="vn">${c.b}</b></div>
     <div class="vs-track"><i class="fa" style="width:${tot?pa:50}%"></i><i class="fb"></i></div>
@@ -931,7 +958,7 @@ function renderGuestQ(){
   document.getElementById('pQLabel').textContent=`Q${q+1} / 12`;
   if(live.answeredQ[q]){ subscribeTally(); renderGuestAnswered(); return; }
   const body=document.getElementById('liveBody');
-  body.innerHTML=`<p class="q-scene">${Q.scene}</p><h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
+  body.innerHTML=`${sceneCardHTML(Q.scene)}<h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
   const wrap=document.getElementById('liveOpts');
   [Q.a,Q.b].forEach(opt=>{
     const b=document.createElement('button');
