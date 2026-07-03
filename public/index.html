@@ -244,6 +244,22 @@ body{
 .fly{animation:flyup .7s cubic-bezier(.4,0,.2,1) forwards}
 @keyframes shakex{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
 .shake{animation:shakex .4s ease}
+/* ===== 16유형 도감 ===== */
+.guide-head{text-align:center;margin:6px 0 8px}
+.guide-head h2{font-size:24px;font-weight:900}
+.guide-head p{font-size:13.5px;color:var(--ink-soft);margin-top:4px}
+.series-pill{display:inline-block;font-size:13.5px;font-weight:900;padding:8px 15px;border-radius:99px;margin:18px 0 12px}
+.guide-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(min-width:520px){.guide-grid{grid-template-columns:repeat(4,1fr)}}
+.gcard{background:#fff;border:2px solid #E7ECF7;border-radius:16px;padding:13px 10px 12px;text-align:center;cursor:pointer;position:relative;box-shadow:0 3px 10px rgba(38,50,75,.06);transition:transform .1s ease}
+.gcard:active{transform:scale(.97)}
+.gc-emoji{font-size:40px;line-height:1;display:block;margin-bottom:7px}
+.gc-code{display:flex;gap:3px;justify-content:center;margin-bottom:7px}
+.gc-code span{width:20px;height:20px;border-radius:6px;background:#fff;border:1.8px dashed currentColor;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900}
+.gc-name{font-size:13px;font-weight:900;color:var(--ink);line-height:1.25;margin-bottom:4px}
+.gc-tag{font-size:11px;color:var(--ink-soft);font-weight:600;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.gc-badge{position:absolute;top:-8px;right:-5px;background:var(--gold);color:#fff;font-size:9px;font-weight:900;padding:3px 7px;border-radius:99px;box-shadow:0 2px 6px rgba(245,185,66,.5);white-space:nowrap}
+.mine-badge{position:absolute;top:12px;right:12px;background:var(--gold);color:#fff;font-size:11px;font-weight:900;padding:5px 11px;border-radius:99px;box-shadow:0 3px 8px rgba(245,185,66,.45);z-index:2}
 .r-name{font-size:26px;font-weight:900;letter-spacing:-.02em;margin-bottom:6px}
 .r-one{font-size:15px;color:var(--ink-soft);font-weight:600;margin-bottom:18px}
 .r-desc{
@@ -368,6 +384,7 @@ body{
         <button class="btn seal" onclick="joinLive()">📡 라이브로 함께하기 (참여자)</button>
         <button class="btn" onclick="startQuiz()">혼자 해보기 🀄</button>
         <button class="btn ghost" onclick="openTeam()">우리 팀 결과 보기 🗺️</button>
+        <button class="btn ghost" onclick="openGuide('s-intro')">📖 16유형 도감 보기</button>
       </div>
       <div id="setupNote" style="display:none;background:#FFF6E5;border:2px solid var(--gold);border-radius:16px;padding:14px;font-size:13px;text-align:left;margin-bottom:14px"><b>⚙️ 설정 필요</b><br>파일 상단 &lt;script&gt;의 <b>FIREBASE_CONFIG</b>에 Firebase 웹 앱 설정값(apiKey·authDomain·projectId)을 입력한 뒤 배포하세요.</div><p class="privacy">🔒 결과는 <b>익명</b>으로만 팀 집계에 반영됩니다 · 이름·소속을 수집하지 않으며 인사 목적에 사용되지 않습니다</p>
       <p class="mini-note" id="hostLink" style="margin-top:16px;display:none"><a href="#" onclick="hostStart();return false" style="color:var(--ink-soft)">🎤 진행자 모드 — 라이브 세션 열기</a></p>
@@ -446,6 +463,7 @@ body{
         <ul id="rTips"></ul>
       </div>
       <div class="chemi" id="rChemi"></div>
+      <button class="btn ghost" onclick="openGuide('s-result')" style="margin-top:14px">📖 다른 유형도 둘러보기</button>
     </div>
 
     <!-- 라이브 참여자: 유형은 자동 집계됨 안내 (솔로에선 숨김) -->
@@ -486,11 +504,36 @@ body{
       <div class="count-pill">지금까지 <b id="tCount">0</b> 명이 도장을 찍었어요</div>
     </div>
     <div id="teamBody"><div class="loading"><span class="spin">🀄</span><br>도장을 세는 중…</div></div>
+    <button class="btn ghost" onclick="openGuide('s-team')" style="margin-top:12px">📖 16유형 도감</button>
     <div class="toolbar">
       <button class="btn ghost" onclick="loadTeam()">새로고침 ⟳</button>
       <button class="btn ghost" onclick="goIntro()">처음으로 🏠</button>
     </div>
     <p class="mini-note">교차 통계는 5명 미만일 때 표시되지 않습니다 · 익명 집계</p>
+  </section>
+
+  <!-- ⑥ 16유형 도감 -->
+  <section class="screen" id="s-guide">
+    <div class="guide-head">
+      <h2>📖 HBTI 16유형 도감</h2>
+      <p>일하는 마음의 네 글자 — 16가지 유형을 둘러보세요</p>
+    </div>
+    <div id="guideBody"></div>
+    <p class="mini-note">💡 카드를 누르면 상세 설명과 환상의 케미 유형을 볼 수 있어요</p>
+    <div class="toolbar">
+      <button class="btn ghost" onclick="closeGuide()">← 돌아가기</button>
+      <button class="btn ghost" onclick="goIntro()">처음으로 🏠</button>
+    </div>
+  </section>
+
+  <!-- ⑦ 유형 상세 -->
+  <section class="screen" id="s-detail">
+    <button class="btn ghost" onclick="backGuide()" style="margin-bottom:12px">← 도감으로</button>
+    <div id="detailBody"></div>
+    <div class="toolbar" style="margin-top:14px">
+      <button class="btn ghost" onclick="backGuide()">📖 도감 목록</button>
+      <button class="btn ghost" onclick="goIntro()">처음으로 🏠</button>
+    </div>
   </section>
 
 </div>
@@ -1011,6 +1054,61 @@ function buildInsights(axisA, total, sorted){
   return out.join('');
 }
 
+/* ================= 16유형 도감 (기존 TYPES/KW/AXIS_HEX 만 사용) ================= */
+let guideReturn='s-intro';                          // 도감 진입 전 화면(복귀용)
+const SERIES = { T:'#E5484D', C:'#37B98C' };        // 계열 색: T계열=빨강, C계열=초록
+function guideCardHTML(type){
+  const T=TYPES[type];
+  const series=SERIES[type[0]] || '#E7ECF7';
+  const code=type.split('').map((l,i)=>`<span style="color:${AXIS_HEX[i]}">${l}</span>`).join('');
+  const mine=(myType && type===myType) ? `<span class="gc-badge">✨ 내 유형</span>` : '';
+  return `<div class="gcard" style="border-color:${series}66" onclick="openDetail('${type}')">
+    ${mine}
+    <span class="gc-emoji">${T.e}</span>
+    <div class="gc-code">${code}</div>
+    <div class="gc-name">${T.n}</div>
+    <div class="gc-tag">${T.o}</div>
+  </div>`;
+}
+function renderGuide(){
+  const keys=Object.keys(TYPES);
+  const tSer=keys.filter(k=>k[0]==='T'), cSer=keys.filter(k=>k[0]==='C');
+  const grid=list=>`<div class="guide-grid">${list.map(guideCardHTML).join('')}</div>`;
+  document.getElementById('guideBody').innerHTML=
+      `<div class="series-pill" style="background:${SERIES.T}1a;color:${SERIES.T}">🀄 믿어줄 때 크는 사람들 (T계열)</div>`
+    + grid(tSer)
+    + `<div class="series-pill" style="background:${SERIES.C}1a;color:${SERIES.C}">⚡ 흔들어줄 때 크는 사람들 (C계열)</div>`
+    + grid(cSer);
+}
+function openGuide(from){ if(from) guideReturn=from; renderGuide(); show('s-guide'); }
+function backGuide(){ show('s-guide'); }
+function closeGuide(){ show(guideReturn||'s-intro'); }
+function renderDetail(type){
+  const T=TYPES[type]; if(!T) return;
+  const col=AXIS_HEX[typeAxis(type)];
+  const code=type.split('').map((l,i)=>`<span style="color:${AXIS_HEX[i]}">${l}</span>`).join('');
+  const kw=type.split('').map(l=>KW[l]).join(' · ');
+  const tips=T.t.map(x=>`<li>💡 ${x}</li>`).join('');
+  const C=TYPES[T.c];
+  const mine=(myType && type===myType) ? `<span class="mine-badge">✨ 내 유형</span>` : '';
+  document.getElementById('detailBody').innerHTML=`
+    <div class="result-card" style="position:relative">
+      ${mine}
+      <span class="r-emoji" style="background:${col}20">${T.e}</span>
+      <div class="r-code">${code}</div>
+      <h2 class="r-name">${T.n}</h2>
+      <p class="r-one"><b style="color:var(--seal)">${kw}</b><br>"${T.o}"</p>
+      <div class="r-desc">${T.d}</div>
+      <div class="r-sec"><h4>🤝 나와 일하는 법</h4><ul>${tips}</ul></div>
+      <div class="r-sec"><h4>💞 환상의 케미</h4>
+        <div class="chemi" style="cursor:pointer" onclick="openDetail('${T.c}')">
+          <span class="ce">${C.e}</span><div><b>${T.c} ${C.n}</b><span>눌러서 이 유형도 둘러보기 →</span></div>
+        </div>
+      </div>
+    </div>`;
+}
+function openDetail(type){ renderDetail(type); show('s-detail'); }
+
 /* ================= 라이브: 공통 ================= */
 function countQ(q){
   let a=0,b=0;
@@ -1281,7 +1379,7 @@ function finishLiveGuest(){
   }
 })();
 
-Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,joinLive,openShare,closeShare,updateWallPreview,throwToWall});
+Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,backGuide,closeGuide});
 
 </script>
 </body>
