@@ -307,6 +307,7 @@ body{
 .toolbar{display:flex;gap:10px;margin-top:6px}
 .toolbar .btn{font-size:14px;padding:13px}
 .mini-note{font-size:11.5px;color:var(--ink-soft);text-align:center;margin-top:12px}
+.btn-sub{font-size:11px;color:var(--ink-soft);text-align:center;margin-top:5px;font-weight:700}
 .loading{text-align:center;padding:50px 0;color:var(--ink-soft);font-weight:700}
 .spin{display:inline-block;animation:spin 1s linear infinite;font-size:26px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -447,24 +448,34 @@ body{
       <div class="chemi" id="rChemi"></div>
     </div>
 
-    <button class="btn ghost" id="shareOpenBtn" onclick="openShare()">🙋 내 결과 공개하기 (선택)</button>
-    <div class="share-panel" id="sharePanel" style="display:none">
-      <input class="wall-input" id="wallName" maxlength="20" placeholder="이름 또는 닉네임" oninput="updateWallPreview()" autocomplete="off">
-      <p class="share-hint">이렇게 공개돼요 👇</p>
-      <div id="wallPreview"></div>
-      <div class="stack" style="margin-top:12px">
-        <button class="btn" id="throwBtn" onclick="throwToWall()">🎈 벽에 날리기</button>
-        <button class="btn ghost" onclick="closeShare()">취소</button>
-      </div>
-      <p class="share-note" id="throwMsg"></p>
-    </div>
+    <!-- 라이브 참여자: 유형은 자동 집계됨 안내 (솔로에선 숨김) -->
+    <p class="mini-note" id="liveAutoNote" style="display:none;color:var(--mint);font-weight:800;margin-top:14px">✅ 내 유형은 팀 통계에 자동 반영됐어요</p>
 
-    <div class="stack" style="margin-top:10px">
-      <button class="btn seal" id="saveBtn" onclick="saveResult()">팀 지도에 내 도장 찍기 🀄</button>
+    <div class="stack" style="margin-top:12px">
+      <!-- 솔로 전용: 익명 유형 등록(도장) — 라이브에선 숨김(자동 집계) -->
+      <div id="anonBlock">
+        <button class="btn seal" id="saveBtn" onclick="saveResult()">🀄 팀 통계에 익명으로 담기</button>
+        <p class="btn-sub">이름 없이 유형만 통계에 반영</p>
+      </div>
+      <!-- 공개(선택): 실명 버블 날리기 -->
+      <div>
+        <button class="btn ghost" id="shareOpenBtn" onclick="openShare()">🙋 내 결과 공개하기 (선택)</button>
+        <p class="btn-sub">이름과 함께 팀 벽에 공개</p>
+        <div class="share-panel" id="sharePanel" style="display:none">
+          <input class="wall-input" id="wallName" maxlength="20" placeholder="이름 또는 닉네임" oninput="updateWallPreview()" autocomplete="off">
+          <p class="share-hint">이렇게 공개돼요 👇</p>
+          <div id="wallPreview"></div>
+          <div class="stack" style="margin-top:12px">
+            <button class="btn" id="throwBtn" onclick="throwToWall()">🎈 벽에 날리기</button>
+            <button class="btn ghost" onclick="closeShare()">취소</button>
+          </div>
+          <p class="share-note" id="throwMsg"></p>
+        </div>
+      </div>
       <button class="btn ghost" onclick="openTeam()">우리 팀 결과 보기 🗺️</button>
       <button class="btn ghost" onclick="restart()">다시 하기 ↺</button>
     </div>
-    <p class="mini-note">🀄 익명 집계와 🎈 이름 공개(벽)는 분리돼요 · 공개는 선택이며 이름을 남긴 사람만 벽에 표시됩니다</p>
+    <p class="mini-note">🀄 익명 집계와 🎈 이름 공개(벽)는 분리돼요 · 공개는 선택입니다</p>
   </section>
 
   <!-- ⑤ 팀 대시보드 -->
@@ -633,7 +644,7 @@ function show(id){
 }
 function goIntro(){ clearUnsubs(); live.role=null; show('s-intro'); }
 function restart(){ qIdx=0; answers=[]; myType=null; saved=false;
-  document.getElementById('saveBtn').textContent='팀 지도에 내 도장 찍기 🀄';
+  document.getElementById('saveBtn').textContent='🀄 팀 통계에 익명으로 담기';
   startQuiz(); }
 
 /* ================= 퀴즈 (솔로/캐치업 공용) ================= */
@@ -766,9 +777,18 @@ function renderResult(){
       <div class="track"><i class="fa" style="${faStyle}"></i><i class="fb" style="${fbStyle}"></i></div>
     </div>`;
   }).join('');
-  if(live.role==='guest' && live.sid){
-    document.getElementById('saveBtn').textContent='✅ 팀 집계에 자동 반영 완료';
-    saved=true;
+  // 모드별 버튼 정리: 라이브는 자동 집계 → 도장 버튼 숨기고 안내 표시 / 솔로는 도장 버튼 유지
+  const isLive = (live.role==='guest' && live.sid);
+  const anonBlock=document.getElementById('anonBlock');
+  const liveNote=document.getElementById('liveAutoNote');
+  if(isLive){
+    if(anonBlock) anonBlock.style.display='none';
+    if(liveNote) liveNote.style.display='block';
+    saved=true;   // 자동 집계됨 — 중복 도장 방지
+  }else{
+    if(anonBlock) anonBlock.style.display='block';
+    if(liveNote) liveNote.style.display='none';
+    const sb=document.getElementById('saveBtn'); if(sb) sb.textContent='🀄 팀 통계에 익명으로 담기';
   }
   show('s-result');
 }
