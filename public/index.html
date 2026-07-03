@@ -309,6 +309,9 @@ body{
 }
 .cell.hot{background:var(--seal-soft);border-color:var(--seal)}
 .cell.zero{opacity:.38}
+.cell.gcell{cursor:pointer;transition:transform .1s ease,box-shadow .1s ease}
+.cell.gcell:hover{box-shadow:0 4px 12px rgba(38,50,75,.14)}
+.cell.gcell:active{transform:scale(.93)}
 .face{
   text-align:center;background:linear-gradient(135deg,#FFF3F3,#FFF9E8);
   border-radius:var(--radius);padding:22px;margin-bottom:14px;box-shadow:var(--shadow);
@@ -529,10 +532,10 @@ body{
 
   <!-- ⑦ 유형 상세 -->
   <section class="screen" id="s-detail">
-    <button class="btn ghost" onclick="backGuide()" style="margin-bottom:12px">← 도감으로</button>
+    <button class="btn ghost" id="detailBackBtn" onclick="detailBack()" style="margin-bottom:12px">← 도감으로</button>
     <div id="detailBody"></div>
     <div class="toolbar" style="margin-top:14px">
-      <button class="btn ghost" onclick="backGuide()">📖 도감 목록</button>
+      <button class="btn ghost" onclick="openGuide()">📖 도감 목록</button>
       <button class="btn ghost" onclick="goIntro()">처음으로 🏠</button>
     </div>
   </section>
@@ -1010,7 +1013,7 @@ function teamStatsHTML(counts, total){
     const col = AXIS_HEX[typeAxis(t)];
     // hot(최다) 셀은 기존 강조 유지, 그 외에는 대표 축 색으로 은은한 틴트
     const tint = isHot ? '' : ` style="border-color:${col}59;background:${col}14"`;
-    return `<div class="cell ${isHot?'hot':''} ${c===0?'zero':''}"${tint}>
+    return `<div class="cell gcell ${isHot?'hot':''} ${c===0?'zero':''}"${tint} onclick="openDetailFromTeam('${t}')">
       ${c>0?`<span class="c">${c}</span>`:''}
       <span class="e">${T.e}</span><span class="n">${t}</span>
     </div>`;
@@ -1057,14 +1060,15 @@ function buildInsights(axisA, total, sorted){
 }
 
 /* ================= 16유형 도감 (기존 TYPES/KW/AXIS_HEX 만 사용) ================= */
-let guideReturn='s-intro';                          // 도감 진입 전 화면(복귀용)
+let guideReturn='s-intro';                          // 도감 목록(#s-guide) 복귀 화면
+let detailReturn='s-guide';                         // 도감 상세(#s-detail) "돌아가기" 복귀 화면
 const SERIES = { T:'#E5484D', C:'#37B98C' };        // 계열 색: T계열=빨강, C계열=초록
 function guideCardHTML(type){
   const T=TYPES[type];
   const series=SERIES[type[0]] || '#E7ECF7';
   const code=type.split('').map((l,i)=>`<span style="color:${AXIS_HEX[i]}">${l}</span>`).join('');
   const mine=(myType && type===myType) ? `<span class="gc-badge">✨ 내 유형</span>` : '';
-  return `<div class="gcard" style="border-color:${series}66" onclick="openDetail('${type}')">
+  return `<div class="gcard" style="border-color:${series}66" onclick="openDetail('${type}','s-guide')">
     ${mine}
     <span class="gc-emoji">${T.e}</span>
     <div class="gc-code">${code}</div>
@@ -1108,8 +1112,19 @@ function renderDetail(type){
         </div>
       </div>
     </div>`;
+  // "돌아가기" 라벨은 복귀 지점에 맞춰 표시 (도감 목록 vs 팀 결과)
+  const backBtn=document.getElementById('detailBackBtn');
+  if(backBtn) backBtn.textContent = (detailReturn==='s-guide') ? '← 도감으로' : '← 팀 결과로';
 }
-function openDetail(type){ renderDetail(type); show('s-detail'); }
+// ret 지정 시 상세 "돌아가기" 복귀 지점 설정. 케미 연쇄 이동은 ret 없이 호출 → 출처 유지.
+function openDetail(type, ret){ if(ret) detailReturn=ret; renderDetail(type); show('s-detail'); }
+function detailBack(){ show(detailReturn||'s-guide'); }   // 화면 토글만 — 리스너/집계 유지
+// 팀 분포 지도 셀 클릭 진입: 진행자면 host 최종화면(s-host), 그 외엔 팀 대시보드(s-team)로 복귀
+function openDetailFromTeam(type){
+  const ret = (live.role==='host') ? 's-host' : 's-team';
+  guideReturn=ret;                 // 상세에서 "도감 목록"으로 새더라도 팀으로 복귀되게
+  openDetail(type, ret);
+}
 
 /* ================= 라이브: 공통 ================= */
 function countQ(q){
@@ -1398,7 +1413,7 @@ function finishLiveGuest(){
   }
 })();
 
-Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,backGuide,closeGuide});
+Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,openDetailFromTeam,detailBack,backGuide,closeGuide});
 
 </script>
 </body>
