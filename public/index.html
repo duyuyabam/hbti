@@ -52,6 +52,7 @@ body{
   transition:transform .12s ease, box-shadow .12s ease;
 }
 .btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.55;cursor:default}
 .btn.seal{background:var(--seal)}
 .btn.ghost{background:#fff;color:var(--ink);border:2px solid #E2E8F5;box-shadow:none;font-weight:700}
 .btn:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
@@ -675,6 +676,7 @@ let unsubs = {};
 let answersCache=[], typesCache=[], tallyCache=null, hostJoins=0, tallyTimer=null;
 let wallCache=[], wallThrown=false;
 let guestRevisit=false;   // 참여자 답변완료 화면이 "이전 질문 재방문"인지 여부
+let hostBusy=false;       // 진행자 세션 문서 쓰기 직렬화 가드(재진입/순서꼬임 방지)
 
 function clearUnsubs(){ Object.values(unsubs).forEach(u=>{ try{u&&u();}catch(e){} }); unsubs={}; }
 function rid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
@@ -1187,22 +1189,39 @@ function pushTally(){
     try{ await setDoc(doc(db,'hbti_sessions',live.sid,'tally','current'),{q:live.q,a:c.a,b:c.b,joins:hostJoins}); }catch(e){}
   }, 1200);
 }
-async function hostNext(){
-  if(live.phase==='lobby'){ live.phase='question'; live.q=0; }
-  else if(live.phase==='question' && live.q<11){ live.q++; }
-  else if(live.phase==='question' && live.q===11){ live.phase='final'; }
-  else return;
-  try{ await setDoc(doc(db,'hbti_sessions',live.sid),{phase:live.phase,q:live.q},{merge:true}); }catch(e){}
-  pushTally();
+function setHostBtnsDisabled(d){
+  const n=document.getElementById('hostBtn'), p=document.getElementById('hostPrevBtn');
+  if(n) n.disabled=d; if(p) p.disabled=d;
+}
+// 세션 q/phase 갱신의 단일 경로. 쓰기를 "직렬화"(한 번에 하나만 in-flight)해
+// 같은 문서에 순서 없는 쓰기가 겹쳐 q가 뒤엉키는 것을 원천 차단.
+// 쓰기 성공 시에만 로컬 상태를 확정하고, 실패하면 롤백해 화면 q와 세션 q를 항상 일치시킨다.
+async function hostGoto(targetPhase, targetQ){
+  if(hostBusy || live.role!=='host' || !live.sid) return;   // 재진입/중복 클릭 방지
+  hostBusy=true; setHostBtnsDisabled(true);
+  const prevPhase=live.phase, prevQ=live.q;
+  live.phase=targetPhase; live.q=targetQ;
+  let ok=true;
+  try{
+    await setDoc(doc(db,'hbti_sessions',live.sid),{phase:live.phase,q:live.q},{merge:true});
+  }catch(e){
+    ok=false; console.error(e);
+    live.phase=prevPhase; live.q=prevQ;   // 실패 롤백 → 로컬 q와 세션 q 불일치 방지
+  }
+  hostBusy=false; setHostBtnsDisabled(false);
+  if(!ok){ alert('질문 전환 실패 — 네트워크 확인 후 다시 눌러주세요.'); return; }
+  if(tallyTimer){ clearTimeout(tallyTimer); tallyTimer=null; }   // 이전 q의 지연 tally 취소
+  pushTally();   // 새 q 기준으로 집계 재게시(참여자 동기화)
   renderHost();
 }
-// 이전 질문으로 (다음 질문과 동일 메커니즘 역방향). 집계 데이터는 삭제하지 않고 보존.
+async function hostNext(){
+  if(live.phase==='lobby') return hostGoto('question', 0);
+  if(live.phase==='question' && live.q<11) return hostGoto('question', live.q+1);
+  if(live.phase==='question' && live.q===11) return hostGoto('final', live.q);
+}
+// 이전 질문으로 (다음과 동일 경로 역방향, q-1). 첫 질문(q=0)이면 멈춤. 집계 데이터는 보존.
 async function hostPrev(){
-  if(live.phase!=='question' || live.q<=0) return;   // 첫 질문(q=0)이면 로비로 안 감
-  live.q--;
-  try{ await setDoc(doc(db,'hbti_sessions',live.sid),{phase:'question',q:live.q},{merge:true}); }catch(e){}
-  pushTally();   // 그 질문의 기존 집계를 다시 게시(참여자 동기화)
-  renderHost();
+  if(live.phase==='question' && live.q>0) return hostGoto('question', live.q-1);
 }
 async function publishSummary(){
   const counts={}; let total=0;
