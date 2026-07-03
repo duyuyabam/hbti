@@ -748,11 +748,22 @@ function renderResult(){
   const C = TYPES[T.c];
   document.getElementById('rChemi').innerHTML =
     `<span class="ce">${C.e}</span><div><b>환상의 케미 · ${T.c} ${C.n}</b><span>서로의 반대편을 채워주는, 최고의 협업 파트너</span></div>`;
+  // 개인 결과 성향 바: "내가 실제로 고른 극(= 도장에 찍힌 글자)" 쪽으로 채우고 그 축색으로 강조.
+  // (팀 대시보드 '네 가지 마음' 바와는 규칙이 다름 — 그쪽은 팀 전체 A극 비율 기준. myScore 데이터는 그대로, 표시만 조정)
   document.getElementById('rBars').innerHTML = AXES.map((ax,i)=>{
-    const pct = Math.round(myScore[i]/3*100);
+    const aChosen = myScore[i] >= 2;                          // 이 축에서 A극을 골랐나 (도장 글자 = aChosen?A:B 와 동일)
+    const chosenSel = aChosen ? myScore[i] : 3 - myScore[i];  // 내가 고른 극의 응답 수(2~3)
+    const fillPct = Math.round(chosenSel/3*100);              // 고른 극의 강도
+    const col = AXIS_HEX[i], grayW = 100 - fillPct;
+    // A극 선택 → 왼쪽(A)을 축색으로 채움 / B극 선택 → 오른쪽(B)을 축색으로 채움
+    const faStyle = aChosen ? `width:${fillPct}%;background:${col}` : `width:${grayW}%;background:#E9EEFF`;
+    const fbStyle = aChosen ? `background:#E9EEFF` : `background:${col}`;
+    // 라벨: 내가 고른 극만 축색 강조(굵게), 반대 극은 연회색
+    const lStyle = aChosen ? `color:${col};font-weight:900` : `color:var(--ink-soft)`;
+    const rStyle = aChosen ? `color:var(--ink-soft)` : `color:${col};font-weight:900`;
     return `<div class="abar">
-      <div class="lab"><span class="l" style="color:${AXIS_HEX[i]}">${ax.aLabel}</span><span class="r" style="color:var(--ink-soft)">${ax.bLabel}</span></div>
-      <div class="track"><i class="fa" style="width:${pct}%;background:${AXIS_HEX[i]}"></i><i class="fb" style="background:#E9EEFF"></i></div>
+      <div class="lab"><span class="l" style="${lStyle}">${ax.aLabel}</span><span class="r" style="${rStyle}">${ax.bLabel}</span></div>
+      <div class="track"><i class="fa" style="${faStyle}"></i><i class="fb" style="${fbStyle}"></i></div>
     </div>`;
   }).join('');
   if(live.role==='guest' && live.sid){
@@ -939,6 +950,7 @@ function teamStatsHTML(counts, total){
       <span class="e">${T.e}</span><span class="n">${t}</span>
     </div>`;
   }).join('');
+  // 팀 밸런스 바: 팀 전체의 A극 비율 기준(항상 왼쪽=A극 채움). 개인 결과 바(내가 고른 극 채움)와 규칙이 다름 — 의도된 차이.
   const bars = AXES.map((ax,i)=>{
     const pct=Math.round(axisA[i]/total*100);
     return `<div class="abar">
