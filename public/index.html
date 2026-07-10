@@ -556,7 +556,7 @@ const FIREBASE_CONFIG = {
    ========================================================== */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, onSnapshot }
+import { getFirestore, doc, setDoc, getDoc, getDocs, addDoc, collection, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 let db=null, fbReady=false;
@@ -678,7 +678,7 @@ let liveCatchup=null, catchupPos=0;
 let live = { role:null, sid:null, pid:null, phase:null, q:-1, answeredQ:{} };
 let unsubs = {};
 let answersCache=[], typesCache=[], tallyCache=null, hostJoins=0, tallyTimer=null;
-let wallCache=[], wallThrown=false;
+let wallCache=[], wallThrown=false, wallResetTs=0;   // wallResetTs: 소프트 리셋 기준시각(이후 버블만 표시)
 let guestRevisit=false;   // 참여자 답변완료 화면이 "이전 질문 재방문"인지 여부
 let hostBusy=false;       // 진행자 세션 문서 쓰기 직렬화 가드(재진입/순서꼬임 방지)
 
@@ -897,17 +897,23 @@ function wallSectionHTML(list, withRefresh, withReset){
   const reset = withReset ? `<button class="btn ghost wall-reset" style="margin-top:10px" onclick="resetWall()">🔄 마음 벽 리셋</button>` : '';
   return `<div class="team-card"><h3>🎈 우리 팀의 마음 벽</h3>${inner}${refresh}${reset}</div>`;
 }
-// 마음 벽 리셋(진행자 전용): 현재 세션의 wall 문서만 삭제. types/answers/집계는 건드리지 않음.
+// 벽 소프트 리셋 필터: resetTs 이후(ts>resetTs)에 날린 버블만 표시. resetTs 없으면 전부.
+function filterWall(list, resetTs){
+  return (!resetTs) ? (list||[]) : (list||[]).filter(w=> (w.ts||0) > resetTs);
+}
+// 마음 벽 리셋(진행자 전용) — 소프트 리셋: 실제 삭제 대신 세션 문서에 기준시각 기록.
+// 규칙 변경 불필요(기존 세션 write 권한 사용). types/answers/집계 무영향, 데이터는 남고 화면만 리셋.
 async function resetWall(){
   if(live.role!=='host' || !live.sid) return;
-  if(!confirm('정말 마음 벽을 비울까요? 되돌릴 수 없습니다.')) return;
+  if(!confirm('정말 마음 벽을 비울까요? 이후 새로 날린 버블만 보입니다.')) return;
+  const ts=Date.now();
   try{
-    const snap = await getDocs(collection(db,'hbti_sessions',live.sid,'wall'));
-    await Promise.all(snap.docs.map(d=> deleteDoc(doc(db,'hbti_sessions',live.sid,'wall',d.id)) ));
-    // 진행자 wall onSnapshot 이 wallCache=[] 로 갱신 → renderHost 가 빈 벽으로 다시 그림(실시간)
+    await setDoc(doc(db,'hbti_sessions',live.sid),{wallResetTs:ts},{merge:true});
+    wallResetTs=ts;
+    renderHost();   // 진행자 화면 즉시 빈 벽으로 (이후 새 버블만 onSnapshot 으로 쌓임)
   }catch(e){
     console.error(e);
-    alert('마음 벽 리셋 실패 — Firestore 규칙에 wall 삭제 권한이 필요합니다(콘솔 반영 후 다시 시도).');
+    alert('마음 벽 리셋 실패 — 네트워크를 확인한 뒤 다시 시도해주세요.');
   }
 }
 function openShare(){
@@ -971,18 +977,20 @@ async function loadTeam(){
     document.getElementById('tCount').textContent=0;
     return;
   }
-  // 팀 벽 버블 로드 (열 때 1회) — 라이브면 세션 벽, 솔로면 전역 벽
-  let wall=[];
+  // 팀 벽 버블 로드 (열 때 1회) — 라이브면 세션 벽(+리셋 기준시각 반영), 솔로면 전역 벽
+  let wall=[], resetTs=0;
   try{
     if(live.role==='guest' && live.sid){
       const ws=await getDocs(collection(db,'hbti_sessions',live.sid,'wall'));
       wall=ws.docs.map(d=>d.data());
+      const sdoc=await getDoc(doc(db,'hbti_sessions',live.sid));   // 소프트 리셋 기준시각
+      resetTs = (sdoc.exists() && sdoc.data().wallResetTs) || 0;
     }else{
       const ws=await getDocs(collection(db,'hbti_wall'));
-      wall=ws.docs.map(d=>d.data());
+      wall=ws.docs.map(d=>d.data());   // 솔로 전역 벽: 리셋 개념 없음
     }
   }catch(e){ console.error(e); }
-  const wallHTML = wallSectionHTML(wall, true);
+  const wallHTML = wallSectionHTML(filterWall(wall, resetTs), true);
 
   const counts={}; let total=0;
   Object.keys(TYPES).forEach(t=>counts[t]=0);
@@ -1203,7 +1211,7 @@ async function hostStart(){
   clearUnsubs();
   const sid = rid();
   live={ role:'host', sid, pid:null, phase:'lobby', q:-1, answeredQ:{} };
-  answersCache=[]; typesCache=[]; hostJoins=0; wallCache=[];
+  answersCache=[]; typesCache=[]; hostJoins=0; wallCache=[]; wallResetTs=0;
   // 1) 세션 문서 생성
   try{
     await setDoc(doc(db,'hbti_sessions',sid),{phase:'lobby',q:-1,ts:Date.now()});
@@ -1334,7 +1342,7 @@ async function renderHost(){
       : `<div class="team-card" style="text-align:center;padding:26px"><p style="font-weight:800">참여자들이 개인 결과를 확인하면<br>유형 분포가 실시간으로 나타납니다</p></div>`;
     body.innerHTML = `<div class="done-badge">🎉 12문항 완료 · 총 ${hostJoins}명 참여</div>`
       + statsPart
-      + wallSectionHTML(wallCache, false, true)
+      + wallSectionHTML(filterWall(wallCache, wallResetTs), false, true)
       + `<div class="team-card"><h3>📊 문항별 결과 리캡</h3>${recap}</div>`;
   }
 }
