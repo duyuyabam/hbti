@@ -235,6 +235,7 @@ body{
 .wall-bubble .wb-code{display:flex;gap:4px;flex:none}
 .wall-bubble .wb-code span{width:23px;height:23px;border-radius:7px;background:#fff;border:2px dashed currentColor;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900}
 .wall-bubble .wb-line{font-size:13px;font-weight:600;color:var(--ink);line-height:1.5;margin-top:9px}
+.wall-reset{color:var(--seal);border-color:#F3C6C8;font-weight:800}
 .wall-grid{display:flex;flex-direction:column;gap:11px}
 .wall-grid .wall-bubble:nth-child(3n+1){transform:rotate(-1.2deg) scale(.99)}
 .wall-grid .wall-bubble:nth-child(3n+2){transform:rotate(1deg) scale(1.02)}
@@ -555,7 +556,7 @@ const FIREBASE_CONFIG = {
    ========================================================== */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, getDocs, addDoc, collection, onSnapshot }
+import { getFirestore, doc, setDoc, getDoc, getDocs, addDoc, deleteDoc, collection, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 let db=null, fbReady=false;
@@ -886,13 +887,28 @@ function wallBubbleHTML(name, type){
     <p class="wb-line">${wallLine(type)}</p>
   </div>`;
 }
-function wallSectionHTML(list, withRefresh){
+function wallSectionHTML(list, withRefresh, withReset){
   const valid=(list||[]).filter(w=>w&&w.name&&TYPES[w.type]);
   const inner = valid.length
     ? `<div class="wall-grid">${valid.map(w=>wallBubbleHTML(w.name,w.type)).join('')}</div>`
     : `<div class="wall-empty">아직 아무도 안 날렸어요 —<br>첫 버블의 주인공이 되어보세요 🎈</div>`;
   const refresh = withRefresh ? `<button class="btn ghost" style="margin-top:12px" onclick="loadTeam()">벽 새로고침 ⟳</button>` : '';
-  return `<div class="team-card"><h3>🎈 우리 팀의 마음 벽</h3>${inner}${refresh}</div>`;
+  // 리셋은 진행자 최종 화면에서만(withReset) — 현재 세션 wall 만 비움
+  const reset = withReset ? `<button class="btn ghost wall-reset" style="margin-top:10px" onclick="resetWall()">🔄 마음 벽 리셋</button>` : '';
+  return `<div class="team-card"><h3>🎈 우리 팀의 마음 벽</h3>${inner}${refresh}${reset}</div>`;
+}
+// 마음 벽 리셋(진행자 전용): 현재 세션의 wall 문서만 삭제. types/answers/집계는 건드리지 않음.
+async function resetWall(){
+  if(live.role!=='host' || !live.sid) return;
+  if(!confirm('정말 마음 벽을 비울까요? 되돌릴 수 없습니다.')) return;
+  try{
+    const snap = await getDocs(collection(db,'hbti_sessions',live.sid,'wall'));
+    await Promise.all(snap.docs.map(d=> deleteDoc(doc(db,'hbti_sessions',live.sid,'wall',d.id)) ));
+    // 진행자 wall onSnapshot 이 wallCache=[] 로 갱신 → renderHost 가 빈 벽으로 다시 그림(실시간)
+  }catch(e){
+    console.error(e);
+    alert('마음 벽 리셋 실패 — Firestore 규칙에 wall 삭제 권한이 필요합니다(콘솔 반영 후 다시 시도).');
+  }
 }
 function openShare(){
   if(wallThrown || !myType) return;
@@ -1018,12 +1034,21 @@ function teamStatsHTML(counts, total){
       <span class="e">${T.e}</span><span class="n">${t}</span>
     </div>`;
   }).join('');
-  // 팀 밸런스 바: 팀 전체의 A극 비율 기준(항상 왼쪽=A극 채움). 개인 결과 바(내가 고른 극 채움)와 규칙이 다름 — 의도된 차이.
+  // 팀 밸런스 바: "비중이 더 큰 극" 쪽으로 채우고 그 축색으로 강조(개인 결과 바와 동일한 방향 규칙).
+  // 동점(50:50)이면 양쪽 반반·둘 다 연하게. 양쪽 % 모두 표시.
   const bars = AXES.map((ax,i)=>{
-    const pct=Math.round(axisA[i]/total*100);
+    const aPct=Math.round(axisA[i]/total*100), bPct=100-aPct;
+    const col=AXIS_HEX[i];
+    const tie=aPct===bPct, aDom=aPct>bPct;
+    let faStyle, fbStyle;
+    if(tie){ faStyle=`width:50%;background:#D9E1F2`; fbStyle=`background:#D9E1F2`; }
+    else if(aDom){ faStyle=`width:${aPct}%;background:${col}`; fbStyle=`background:#E9EEFF`; }  // 왼쪽(A극) 채움
+    else { faStyle=`width:${aPct}%;background:#E9EEFF`; fbStyle=`background:${col}`; }          // 오른쪽(B극) 채움
+    const lStyle = (!tie && aDom) ? `color:${col};font-weight:900` : `color:var(--ink-soft)`;
+    const rStyle = (!tie && !aDom) ? `color:${col};font-weight:900` : `color:var(--ink-soft)`;
     return `<div class="abar">
-      <div class="lab"><span class="l" style="color:${AXIS_HEX[i]}">${ax.aLabel} ${pct}%</span><span class="r" style="color:var(--ink-soft)">${100-pct}% ${ax.bLabel}</span></div>
-      <div class="track"><i class="fa" style="width:${pct}%;background:${AXIS_HEX[i]}"></i><i class="fb" style="background:#E9EEFF"></i></div>
+      <div class="lab"><span class="l" style="${lStyle}">${ax.aLabel} ${aPct}%</span><span class="r" style="${rStyle}">${bPct}% ${ax.bLabel}</span></div>
+      <div class="track"><i class="fa" style="${faStyle}"></i><i class="fb" style="${fbStyle}"></i></div>
     </div>`;
   }).join('');
   const insights = buildInsights(axisA, total, sorted);
@@ -1041,21 +1066,46 @@ function teamStatsHTML(counts, total){
 }
 
 function buildInsights(axisA, total, sorted){
-  const p = axisA.map(a=>Math.round(a/total*100));
+  const p = axisA.map(a=>Math.round(a/total*100));   // 축별 A극 비율(%)
   const out=[];
-  const ax0 = p[0]>=60 ? `우리 중 ${p[0]}%는 믿고 맡겨줄 때(T) 피어나는 사람들입니다. 서로에게 그런 리더, 그런 선배가 되어주고 있는지 — 한 번쯤 돌아볼 단서입니다.`
-    : p[0]<=40 ? `우리 중 ${100-p[0]}%는 흔들고 밀어줄 때(C) 크는 사람들입니다. 안정보다 자극을 갈망하는 팀 — 그 에너지를 담을 도전의 무대가 준비되어 있는지가 질문입니다.`
-    : `믿음(T)과 자극(C)이 절반씩 — 한 가지 리더십이 모두에게 맞을 수 없다는 것을, 우리 팀 스스로가 보여주고 있습니다.`;
-  const ax2 = p[2]>=55 ? `새 길(N)을 먼저 여는 사람이 ${p[2]}% — 우리 팀엔 개척의 에너지가 흐릅니다. 이 에너지가 갈 곳을 잃지 않도록, 실험의 무대를 마련해줄 때입니다.`
-    : p[2]<=45 ? `한우물(D)을 파는 사람이 ${100-p[2]}% — 우리 팀의 힘은 깊이에서 나옵니다. AX의 파도 속에서, 이 깊이를 지키면서 새것을 더하는 방법이 우리의 숙제입니다.`
-    : `새길(N)과 한우물(D)이 균형을 이룹니다. 길을 여는 사람과 그 길을 깊게 만드는 사람이 함께 있는, 좋은 생태계입니다.`;
-  const ax3 = p[3]>=55 ? `사람 문제 앞에서 데이터(F)를 먼저 여는 사람이 ${p[3]}%입니다. 숫자의 힘을 믿는 팀 — 다만 숫자 뒤의 이야기를 들어줄 공감(H)의 목소리도 소중히 지켜야 합니다.`
-    : p[3]<=45 ? `사람 문제 앞에서 이야기(H)를 먼저 듣는 사람이 ${100-p[3]}%입니다. 공감을 믿는 팀 — 그 직관을 뒷받침해줄 데이터(F)의 언어를 더하면 설득력이 완성됩니다.`
-    : `데이터(F)와 공감(H)이 나란히 — 숫자와 이야기, 어느 한쪽도 잃지 않은 팀입니다.`;
-  out.push(`<p>${ax0}</p>`,`<p>${ax2}</p>`,`<p>${ax3}</p>`);
-  const kinds = sorted.filter(([,c])=>c>0).length;
-  if(kinds>=10) out.push(`<p>16개 유형 중 ${kinds}개가 존재합니다. 우리는 생각보다 훨씬 서로 다른 사람들이고 — 그 다름이 이 팀의 자산입니다.</p>`);
-  else if(kinds<=4 && total>=10) out.push(`<p>우리 팀은 ${kinds}개 유형에 모여 있습니다. 닮은 사람들의 편안함 뒤에, 우리가 놓치고 있는 관점은 없을까요.</p>`);
+  // ── 축별 2~3문장 (비율 언급 + 시사점 + 함께 돌아볼 질문, 성찰적·따뜻한 톤) ──
+  const a0=p[0], a1=p[1], a2=p[2], a3=p[3];
+  out.push(`<p>${
+    a0>=60 ? `우리 중 ${a0}%는 믿고 맡겨줄 때(T) 마음이 피어나는 사람들이에요. 안정된 신뢰가 이 팀의 연료라는 뜻이죠. 서로에게 그런 든든한 뒷배가 되어주고 있는지, 한 번쯤 함께 돌아볼 단서예요.`
+    : a0<=40 ? `우리 중 ${100-a0}%는 흔들고 밀어줄 때(C) 성장하는 사람들이에요. 안정보다 자극과 도전을 갈망하는 팀이라는 신호죠. 그 에너지가 향할 새로운 무대가 지금 우리에게 준비돼 있는지가 함께 생각해볼 지점이에요.`
+    : `믿음(T ${a0}%)과 자극(C ${100-a0}%)이 거의 반반이에요. 한 가지 방식이 모두에게 맞을 수 없다는 걸 우리 팀 스스로가 보여주는 셈이죠. 사람마다 필요한 온도가 다르다는 걸 서로 알아가는 게 우리의 숙제예요.`
+  }</p>`);
+  out.push(`<p>${
+    a1>=60 ? `동료에게서 실력(A)을 먼저 보는 사람이 ${a1}%예요. 서로의 전문성을 신뢰하고 자극받는 팀이라는 뜻이죠. 다만 그 기준이 누군가에겐 문턱처럼 느껴지진 않는지, 따뜻함의 자리도 함께 지켜지고 있는지 돌아볼 만해요.`
+    : a1<=40 ? `동료에게서 내 편(M)을 먼저 찾는 사람이 ${100-a1}%예요. 마음으로 이어진 관계가 이 팀을 지탱하는 힘이라는 신호죠. 이 끈끈함 위에 서로의 성장을 밀어주는 대화가 더해지면 더 단단해질 거예요.`
+    : `실력(A ${a1}%)과 내 편(M ${100-a1}%)을 나란히 원하는 팀이에요. 프로다움과 다정함, 둘 다 놓치고 싶지 않은 마음이 함께 있죠. 어느 쪽도 포기하지 않아도 된다는 걸 서로 확인해가는 팀이에요.`
+  }</p>`);
+  out.push(`<p>${
+    a2>=60 ? `새 길(N)을 먼저 여는 사람이 ${a2}%예요. 우리 팀엔 개척의 에너지가 흐른다는 뜻이죠. 이 에너지가 갈 곳을 잃지 않도록, 마음껏 실험할 무대를 마련해줄 때예요.`
+    : a2<=40 ? `한 우물(D)을 깊게 파는 사람이 ${100-a2}%예요. 우리 팀의 힘이 깊이에서 나온다는 신호죠. 빠르게 변하는 흐름 속에서 이 깊이를 지키면서 새것을 더하는 방법이 우리의 숙제예요.`
+    : `새 길(N ${a2}%)과 한 우물(D ${100-a2}%)이 균형을 이뤄요. 길을 여는 사람과 그 길을 깊게 만드는 사람이 함께 있는, 좋은 생태계라는 뜻이죠. 서로의 속도를 존중하면 더 멀리 갈 수 있어요.`
+  }</p>`);
+  out.push(`<p>${
+    a3>=60 ? `사람 문제 앞에서 데이터(F)를 먼저 여는 사람이 ${a3}%예요. 숫자의 힘을 믿는 팀이라는 뜻이죠. 다만 숫자 뒤에 숨은 이야기를 들어줄 공감(H)의 목소리도 함께 소중히 지켜지면 좋겠어요.`
+    : a3<=40 ? `사람 문제 앞에서 이야기(H)를 먼저 듣는 사람이 ${100-a3}%예요. 공감으로 사람을 이해하는 팀이라는 신호죠. 그 따뜻한 직관을 데이터(F)의 언어로 뒷받침하면 설득력까지 갖추게 될 거예요.`
+    : `데이터(F ${a3}%)와 공감(H ${100-a3}%)이 나란히 서 있어요. 숫자와 이야기, 어느 한쪽도 잃지 않은 팀이라는 뜻이죠. 두 언어를 함께 쓸 줄 아는 건 흔치 않은 강점이에요.`
+  }</p>`);
+  // ── 종합: 팀의 얼굴 + 다양성 + 가장 쏠린/균형잡힌 축 ──
+  const [topType, topCount] = sorted[0];
+  const TT = TYPES[topType];
+  const kinds = sorted.filter(([,c])=>c>0).length, absent = 16-kinds;
+  out.push(`<p>${total}명의 마음을 모아보니, 가장 많은 건 ${TT.e} ${TT.n}(${topType})이에요 — 지금 우리 팀의 얼굴이라 할 수 있죠.${
+    kinds>=10 ? ` 16개 유형 중 ${kinds}개가 함께 있어, 우리는 생각보다 훨씬 다양한 사람들이에요. 그 다름이 이 팀의 자산이고요.`
+    : kinds<=5 ? ` 16개 유형 중 ${kinds}개에 모여 있고 ${absent}개 유형은 아직 없네요. 닮은 사람들의 편안함 뒤에, 우리가 놓치고 있는 시선은 없을까 함께 떠올려볼 만해요.`
+    : ` 16개 유형 중 ${kinds}개가 존재하는, 익숙함과 새로움이 적당히 섞인 구성이에요.`
+  }</p>`);
+  const dev = p.map(x=>Math.abs(x-50));
+  let mostSkew=0, mostBal=0;
+  for(let i=1;i<4;i++){ if(dev[i]>dev[mostSkew]) mostSkew=i; if(dev[i]<dev[mostBal]) mostBal=i; }
+  const skewPct = Math.max(p[mostSkew], 100-p[mostSkew]);
+  if(mostSkew!==mostBal){
+    out.push(`<p>네 가지 마음 중 <b style="color:${AXIS_HEX[mostSkew]}">${AXES[mostSkew].name}</b>에서 우리가 가장 한쪽으로 모였고(${skewPct}%), <b style="color:${AXIS_HEX[mostBal]}">${AXES[mostBal].name}</b>에서 가장 고르게 나뉘었어요. 어디서 닮았고 어디서 다른지가, 우리 팀을 이해하는 실마리예요.</p>`);
+  }
   return out.join('');
 }
 
@@ -1284,7 +1334,7 @@ async function renderHost(){
       : `<div class="team-card" style="text-align:center;padding:26px"><p style="font-weight:800">참여자들이 개인 결과를 확인하면<br>유형 분포가 실시간으로 나타납니다</p></div>`;
     body.innerHTML = `<div class="done-badge">🎉 12문항 완료 · 총 ${hostJoins}명 참여</div>`
       + statsPart
-      + wallSectionHTML(wallCache, false)
+      + wallSectionHTML(wallCache, false, true)
       + `<div class="team-card"><h3>📊 문항별 결과 리캡</h3>${recap}</div>`;
   }
 }
@@ -1413,7 +1463,7 @@ function finishLiveGuest(){
   }
 })();
 
-Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,openDetailFromTeam,detailBack,backGuide,closeGuide});
+Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,openDetailFromTeam,detailBack,backGuide,closeGuide,resetWall});
 
 </script>
 </body>
