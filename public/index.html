@@ -559,7 +559,7 @@ const FIREBASE_CONFIG = {
    ========================================================== */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc, getDocs, addDoc, collection, onSnapshot }
+import { getFirestore, doc, setDoc, getDoc, getDocs, addDoc, collection, onSnapshot, deleteDoc, writeBatch }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 let db=null, fbReady=false;
@@ -1026,6 +1026,22 @@ async function loadTeam(){
       <p class="mini-note" style="text-align:left;margin-top:8px">세션을 고르면 해당 라이브 세션의 결과·마음 벽을 볼 수 있어요</p></div>`;
   }
 
+  // ── 진행자 전용: 리허설/테스트 데이터 정리 (눈에 띄지 않게 하단에 작게) ──
+  const cleanupHTML = hostView ? `
+    <div class="team-card" id="cleanupCard" style="margin-top:22px;border:1px dashed #E2E8F5;box-shadow:none">
+      <button class="btn ghost" id="cleanupToggle" style="font-size:12px;padding:7px 12px;opacity:.55;width:auto" onclick="toggleCleanup()">🧹 데이터 정리</button>
+      <div id="cleanupPanel" style="display:none;margin-top:12px">
+        <p class="mini-note" style="text-align:left;margin-top:0">리허설·테스트 데이터를 앱에서 바로 지웁니다. 진행자에게만 보이며, 되돌릴 수 없어요.</p>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+          <button class="btn ghost" style="font-size:13px" onclick="cleanupRun('session')">이 세션만 비우기</button>
+          <button class="btn ghost" style="font-size:13px" onclick="cleanupRun('past')">지난 세션 전부 삭제</button>
+          <button class="btn ghost" style="font-size:13px" onclick="cleanupRun('solo')">솔로 모드 데이터 삭제</button>
+          <button class="btn ghost" style="font-size:13px;color:#E5484D;border-color:#F3C9CB" onclick="cleanupRun('all')">전부 삭제 (초기화)</button>
+        </div>
+        <div id="cleanStatus" class="mini-note" style="margin-top:12px;min-height:18px"></div>
+      </div>
+    </div>` : '';
+
   // ── 데이터 소스 결정: 진행자=선택 세션 / 참여자=현재 세션 / 그 외=전역 ──
   let dataSid=null;
   if(hostView) dataSid = teamSel || null;
@@ -1083,7 +1099,78 @@ async function loadTeam(){
         <p style="font-weight:800;margin-top:8px">아직 지도가 비어 있어요</p>
         <p style="font-size:13.5px;color:var(--ink-soft)">첫 번째 도장의 주인공이 되어주세요!</p></div>`
     : teamStatsHTML(counts, total);
-  body.innerHTML = sessHTML + statsHTML + wallHTML;
+  body.innerHTML = sessHTML + statsHTML + wallHTML + cleanupHTML;
+}
+
+// ══ 진행자 데이터 정리 (클라이언트 배치 삭제) ══
+function toggleCleanup(){
+  const p=document.getElementById('cleanupPanel'); if(!p) return;
+  p.style.display = p.style.display==='none' ? 'block' : 'none';
+}
+let cleanupCount=0;
+function cleanupProg(){
+  const st=document.getElementById('cleanStatus'); if(st) st.textContent=`삭제 중… ${cleanupCount}개 처리`;
+}
+// 컬렉션의 모든 문서를 배치(최대 400개씩)로 삭제 — 문서가 많아도 안전하게 나눠 처리
+async function delCol(colRef){
+  const snap=await getDocs(colRef);
+  const docs=snap.docs;
+  for(let i=0;i<docs.length;i+=400){
+    const batch=writeBatch(db);
+    docs.slice(i,i+400).forEach(d=>batch.delete(d.ref));
+    await batch.commit();
+    cleanupCount += Math.min(400, docs.length-i);
+    cleanupProg();
+  }
+  return docs.length;
+}
+// 세션 1건: 알려진 하위 컬렉션을 모두 비우고 세션 문서 자체를 삭제
+const SESSION_SUBCOLS=['joins','answers','types','wall','tally','summary'];
+async function delSession(sid){
+  for(const sc of SESSION_SUBCOLS) await delCol(collection(db,'hbti_sessions',sid,sc));
+  await deleteDoc(doc(db,'hbti_sessions',sid)); cleanupCount++; cleanupProg();
+}
+async function delAllSessions(){
+  const ss=await getDocs(collection(db,'hbti_sessions'));
+  for(const d of ss.docs) await delSession(d.id);
+}
+async function cleanupRun(kind){
+  if(!fbReady){ alert('Firebase 준비 후 사용할 수 있어요'); return; }
+  const plans={
+    session:{ label:'이 세션만 비우기', desc:'현재 세션의 응답·유형·참여·마음 벽을 삭제합니다. (세션 자체는 유지)' },
+    past:{ label:'지난 세션 전부 삭제', desc:'모든 라이브 세션과 그 하위 데이터를 삭제합니다.' },
+    solo:{ label:'솔로 모드 데이터 삭제', desc:'개인 검사 누적(hbti_results)과 개인 공유벽(hbti_wall)을 삭제합니다.' },
+    all:{ label:'전부 삭제 (초기화)', desc:'모든 세션·솔로 데이터·메타 정보까지 삭제해 완전히 초기화합니다.' },
+  };
+  const p=plans[kind];
+  if(!confirm(`「${p.label}」\n\n${p.desc}\n\n정말 삭제할까요? 되돌릴 수 없습니다.`)) return;   // 2단계 최종 확인
+  const st=document.getElementById('cleanStatus');
+  const btns=document.querySelectorAll('#cleanupPanel button');
+  btns.forEach(b=>b.disabled=true);
+  cleanupCount=0; if(st) st.textContent='삭제 중… 0개 처리';
+  try{
+    if(kind==='session'){
+      const sid=(teamSel && teamSel!=='') ? teamSel : live.sid;
+      if(!sid){ if(st) st.textContent='비울 세션이 없어요. 세션을 선택하거나 진행 중이어야 합니다.'; btns.forEach(b=>b.disabled=false); return; }
+      for(const sc of ['joins','answers','types','wall']) await delCol(collection(db,'hbti_sessions',sid,sc));
+    } else if(kind==='past'){
+      await delAllSessions();
+    } else if(kind==='solo'){
+      await delCol(collection(db,'hbti_results'));
+      await delCol(collection(db,'hbti_wall'));
+    } else if(kind==='all'){
+      await delAllSessions();
+      await delCol(collection(db,'hbti_results'));
+      await delCol(collection(db,'hbti_wall'));
+      await delCol(collection(db,'hbti_meta'));
+    }
+    if(st) st.textContent=`✅ 정리 완료 · 총 ${cleanupCount}개 삭제`;
+  }catch(e){
+    console.error(e);
+    if(st) st.textContent='⚠️ 삭제 중 문제가 발생했어요 — Firestore 규칙(delete 허용)·네트워크를 확인해주세요.';
+  }finally{
+    btns.forEach(b=>b.disabled=false);
+  }
 }
 
 function teamStatsHTML(counts, total){
@@ -1622,7 +1709,7 @@ function finishLiveGuest(){
   }
 })();
 
-Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,hostEnd,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,openDetailFromTeam,detailBack,backGuide,closeGuide,resetWall,pickTeamSession});
+Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,hostEnd,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,openDetailFromTeam,detailBack,backGuide,closeGuide,resetWall,pickTeamSession,toggleCleanup,cleanupRun});
 
 </script>
 </body>
