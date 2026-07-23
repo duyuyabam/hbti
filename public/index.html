@@ -402,7 +402,7 @@ body{
       <span class="live-pill"><span class="dot"></span>LIVE 진행자</span>
       <span style="display:flex;gap:8px;align-items:center">
         <span class="axis-chip" id="hSid" style="font-size:11px">세션 —</span>
-        <span class="host-count">참여 <b id="hCount">0</b>명</span>
+        <span class="host-count" id="hCountPill">참여 <b>0</b>명</span>
       </span>
     </div>
     <div id="hostBody"></div>
@@ -421,6 +421,7 @@ body{
       <span style="display:flex;gap:8px;align-items:center">
         <span class="axis-chip" id="pSid" style="font-size:11px">세션 —</span>
         <span class="host-count" id="pQLabel"></span>
+        <span class="host-count" id="pCount"></span>
       </span>
     </div>
     <div id="liveBody"></div>
@@ -1253,19 +1254,17 @@ function countQ(q){
   answersCache.forEach(x=>{ if(x.q===q){ x.v==='A'?a++:b++; } });
   return {a,b};
 }
-function vsCardHTML(q, c, joins){
+function vsCardHTML(q, c){
   const Q=QUESTIONS[q];
   const tot=c.a+c.b;
   const pa=tot? Math.round(c.a/tot*100):50;
-  // joins(세션 총원)가 있으면 "완료 N / 총원 M" 으로 표시
-  const midLabel = (joins && joins>0) ? `${tot} / ${joins}명 응답 완료` : `${tot}명 응답`;
   return `<div class="vs-card">
     <p class="q-scene">${Q.scene}</p>
     <h2 class="q-text" style="margin:6px 0 10px">${Q.text}</h2>
     <div class="vs-opt a"><span class="ve">${Q.a.e}</span><span class="vt">${Q.a.t}</span><b class="vn">${c.a}</b></div>
     <div class="vs-opt b"><span class="ve">${Q.b.e}</span><span class="vt">${Q.b.t}</span><b class="vn">${c.b}</b></div>
     <div class="vs-track"><i class="fa" style="width:${tot?pa:50}%"></i><i class="fb"></i></div>
-    <div class="vs-pct"><span class="l">${tot?pa:0}%</span><span style="color:var(--ink-soft)">${midLabel}</span><span class="r">${tot?100-pa:0}%</span></div>
+    <div class="vs-pct"><span class="l">${tot?pa:0}%</span><span style="color:var(--ink-soft)">${tot}명 응답</span><span class="r">${tot?100-pa:0}%</span></div>
   </div>`;
 }
 
@@ -1275,13 +1274,13 @@ function hostSubscribe(sid){
   const hSid=document.getElementById('hSid'); if(hSid) hSid.textContent='세션 #'+sid.slice(-4);
   unsubs.joins = onSnapshot(collection(db,'hbti_sessions',sid,'joins'), s=>{
     hostJoins=s.size;
-    document.getElementById('hCount').textContent=hostJoins;
+    updateHostPill();   // 총원(M) 변경 → 우상단 pill 만 갱신(카드 재렌더 불필요)
     pushTally();
-    if(live.phase==='question') renderHost();   // 총원(M)이 바뀌면 "N/M명 응답 완료" 갱신
   });
   unsubs.answers = onSnapshot(collection(db,'hbti_sessions',sid,'answers'), s=>{
     answersCache = s.docs.map(d=>d.data());
     pushTally();
+    updateHostPill();
     if(live.phase==='question') renderHost();
   });
   unsubs.types = onSnapshot(collection(db,'hbti_sessions',sid,'types'), s=>{
@@ -1420,7 +1419,18 @@ async function publishSummary(){
   try{ await setDoc(doc(db,'hbti_sessions',live.sid,'summary','final'),{counts,total,joins:hostJoins,ts:Date.now()}); }catch(e){}
   return {counts,total};
 }
+// 진행자 우상단 pill: 질문 중이면 "완료/총원명"(예: 3/10명), 그 외엔 "참여 N명"
+function updateHostPill(){
+  const el=document.getElementById('hCountPill'); if(!el) return;
+  if(live.phase==='question'){
+    const c=countQ(live.q);
+    el.innerHTML=`<b>${c.a+c.b}/${hostJoins}</b>명`;
+  }else{
+    el.innerHTML=`참여 <b>${hostJoins}</b>명`;
+  }
+}
 async function renderHost(){
+  updateHostPill();   // phase 전환 시 pill 갱신
   const body=document.getElementById('hostBody');
   const btn=document.getElementById('hostBtn');
   const prevBtn=document.getElementById('hostPrevBtn');
@@ -1443,7 +1453,7 @@ async function renderHost(){
     const c=countQ(live.q);
     body.innerHTML=`<div style="font-weight:900;margin-bottom:10px">Q${live.q+1} / 12</div>
       <div class="progress"><i style="width:${(live.q+1)/12*100}%"></i></div>`
-      + vsCardHTML(live.q, c, hostJoins);
+      + vsCardHTML(live.q, c);
   }else if(live.phase==='final'){
     btn.style.display='none';
     if(prevBtn) prevBtn.style.display='none';
@@ -1516,20 +1526,22 @@ function subscribeTally(){
     unsubs.tally = onSnapshot(doc(db,'hbti_sessions',live.sid,'tally','current'), s=>{
       tallyCache = s.data()||null;
       if(live.phase!=='question') return;
-      if(live.answeredQ[live.q]) renderGuestAnswered();
-      else updateGuestProg();   // 답변 전에는 A/B 분포 없이 완료 인원만 갱신
+      updateGuestProg();                                  // 우상단 인원(항상 먼저 갱신)
+      if(live.answeredQ[live.q]) renderGuestAnswered();   // 답변한 상태면 카드도 갱신
     });
   }catch(e){}
 }
-// 답변 전 참여자 화면: 현재 질문의 "응답 완료 N / 총원 M" 표시 (선택지 분포는 답변 후에만 공개)
+// 참여자 우상단 인원: 질문 중이면 "완료/총원명"(예: 3/10명), 그 외엔 비움. 분포(A/B)는 절대 노출 X.
 function updateGuestProg(){
-  const el=document.getElementById('qProg'); if(!el) return;
+  const el=document.getElementById('pCount'); if(!el) return;
+  if(live.phase!=='question'){ el.innerHTML=''; return; }
   const joins=(tallyCache&&tallyCache.joins)||0;
   const done=(tallyCache&&tallyCache.q===live.q)?((tallyCache.a||0)+(tallyCache.b||0)):0;
-  el.textContent = joins ? `📊 ${done} / ${joins}명 답변 완료` : '📊 집계 대기 중…';
+  el.innerHTML = joins ? `<b>${done}/${joins}</b>명` : '';
 }
 function renderGuestLobby(){
   document.getElementById('pQLabel').textContent='대기 중';
+  updateGuestProg();   // 우상단 인원 비움
   document.getElementById('liveBody').innerHTML=
     `<div class="lobby-box"><span class="be">🀄</span><h3>입장 완료!</h3><p>진행자가 곧 첫 질문을 공개합니다</p></div>`;
 }
@@ -1537,6 +1549,7 @@ function renderGuestLobby(){
 function renderGuestEnded(){
   unsubTally();
   document.getElementById('pQLabel').textContent='세션 종료';
+  updateGuestProg();   // 우상단 인원 비움
   document.getElementById('liveBody').innerHTML=
     `<div class="lobby-box"><span class="be">🏁</span><h3>세션이 종료되었습니다</h3>
       <p>참여해주셔서 감사합니다 · 진행자가 새 세션을 열면 자동으로 연결됩니다</p></div>
@@ -1545,11 +1558,10 @@ function renderGuestEnded(){
 function renderGuestQ(){
   const q=live.q, Q=QUESTIONS[q];
   document.getElementById('pQLabel').textContent=`Q${q+1} / 12`;
-  if(live.answeredQ[q]){ subscribeTally(); renderGuestAnswered(true); return; }   // 이미 답한 질문(이전질문 재방문 포함) — 변경 불가, 집계만 다시 봄
+  if(live.answeredQ[q]){ subscribeTally(); updateGuestProg(); renderGuestAnswered(true); return; }   // 이미 답한 질문(이전질문 재방문 포함) — 변경 불가, 집계만 다시 봄
   const body=document.getElementById('liveBody');
-  body.innerHTML=`${sceneCardHTML(Q.scene, Q.axis)}<h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`
-    +`<p class="mini-note" id="qProg" style="font-weight:800">📊 집계 대기 중…</p>`;
-  subscribeTally();      // 답변 전에도 "완료 인원/총원" 이 보이도록 질문 단계 내내 구독 (같은 문서 1건)
+  body.innerHTML=`${sceneCardHTML(Q.scene, Q.axis)}<h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
+  subscribeTally();      // 답변 전에도 우상단 "완료/총원" 이 보이도록 질문 단계 내내 구독 (같은 문서 1건)
   updateGuestProg();
   const wrap=document.getElementById('liveOpts');
   [Q.a,Q.b].forEach(opt=>{
@@ -1572,12 +1584,11 @@ function renderGuestAnswered(revisit){
   const q=live.q;
   const fresh = tallyCache && tallyCache.q===q;
   const c = fresh ? {a:tallyCache.a,b:tallyCache.b} : {a:0,b:0};
-  const joins = (tallyCache && tallyCache.joins) || 0;
   const badge = guestRevisit
     ? '✅ 이미 답하셨어요 — 결과를 함께 보고 있어요'
     : '✅ 답변 완료 — 실시간 집계';
   document.getElementById('liveBody').innerHTML=
-    `<div class="done-badge">${badge}</div>` + vsCardHTML(q,c,joins)
+    `<div class="done-badge">${badge}</div>` + vsCardHTML(q,c)
     + `<p class="mini-note">진행자가 질문을 옮기면 자동으로 넘어갑니다</p>`;
 }
 function guestFinal(){
