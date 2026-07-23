@@ -1167,7 +1167,11 @@ async function cleanupRun(kind){
     if(st) st.textContent=`✅ 정리 완료 · 총 ${cleanupCount}개 삭제`;
   }catch(e){
     console.error(e);
-    if(st) st.textContent='⚠️ 삭제 중 문제가 발생했어요 — Firestore 규칙(delete 허용)·네트워크를 확인해주세요.';
+    const code=(e&&(e.code||e.message))?` [${e.code||e.message}]`:'';
+    const hint=(e&&/permission|insufficient/i.test(e.code+' '+e.message))
+      ? ' — Firestore 규칙에 delete 허용이 아직 반영되지 않았어요. 규칙 게시 후 1분 뒤 새로고침(Ctrl+Shift+R)하고 다시 시도하세요.'
+      : ' — 네트워크/Firestore 상태를 확인해주세요.';
+    if(st) st.textContent='⚠️ 삭제 중 문제가 발생했어요'+hint+code;
   }finally{
     btns.forEach(b=>b.disabled=false);
   }
