@@ -410,7 +410,8 @@ body{
       <button class="btn ghost" id="hostPrevBtn" onclick="hostPrev()" style="flex:0 0 auto;width:auto;display:none">◀ 이전 질문</button>
       <button class="btn seal" id="hostBtn" onclick="hostNext()" style="flex:1 1 0;width:auto;min-width:0">참여자 입장 받는 중 — 첫 질문 공개 ▶</button>
     </div>
-    <p class="mini-note">이 화면을 스크린에 띄우고 진행하세요 · 통계는 실시간 자동 갱신</p>
+    <button class="btn ghost wall-reset" id="hostEndBtn" onclick="hostEnd()" style="margin-top:10px">🏁 세션 종료</button>
+    <p class="mini-note">이 화면을 스크린에 띄우고 진행하세요 · 통계는 실시간 자동 갱신<br>세션은 <b>종료 버튼을 누르기 전까지 유지</b>됩니다 — 새로고침해도 이어서 진행돼요</p>
   </section>
 
   <!-- 라이브: 참여자 -->
@@ -486,6 +487,7 @@ body{
         <p class="btn-sub">이름과 함께 팀 벽에 공개</p>
         <div class="share-panel" id="sharePanel" style="display:none">
           <input class="wall-input" id="wallName" maxlength="20" placeholder="이름 또는 닉네임" oninput="updateWallPreview()" autocomplete="off">
+          <input class="wall-input" id="wallMsg" maxlength="60" placeholder="벽에 남길 한마디 (선택)" oninput="updateWallPreview()" autocomplete="off" style="margin-top:8px">
           <p class="share-hint">이렇게 공개돼요 👇</p>
           <div id="wallPreview"></div>
           <div class="stack" style="margin-top:12px">
@@ -786,6 +788,7 @@ function renderResult(){
   const so=document.getElementById('shareOpenBtn'); if(so){ so.textContent='🙋 내 결과 공개하기 (선택)'; so.disabled=false; }
   const sp=document.getElementById('sharePanel'); if(sp) sp.style.display='none';
   const wn=document.getElementById('wallName'); if(wn) wn.value='';
+  const wm=document.getElementById('wallMsg'); if(wm) wm.value='';
   const tm=document.getElementById('throwMsg'); if(tm) tm.textContent='';
   const rE = document.getElementById('rEmoji');
   rE.textContent = T.e;
@@ -872,25 +875,28 @@ function polite(o){
 // 협업 한마디: "저는 [유형명]이에요 — [정중체 태그라인]"
 function wallLine(type){ const T=TYPES[type]; return T? `저는 ${iyeyo(T.n)} — ${polite(T.o)}` : ''; }
 // 벽 버블(미리보기 + 팀 벽 공용). name 은 사용자 입력 → 반드시 esc
-function wallBubbleHTML(name, type){
+function wallBubbleHTML(name, type, msg){
   const T=TYPES[type]; if(!T) return '';
   const col=AXIS_HEX[typeAxis(type)];
   const nm=(name||'').trim();
   const nameHtml = nm ? `<span class="wb-name">${esc(nm)}</span>` : `<span class="wb-name ph">(이름)</span>`;
   const code=type.split('').map((l,i)=>`<span style="color:${AXIS_HEX[i]}">${l}</span>`).join('');
+  // 한마디(msg)가 있으면 그 문장을, 없으면 유형 기본 문장을 표시. 사용자 입력 → 반드시 esc
+  const line = (msg||'').trim() ? esc(msg.trim()) : wallLine(type);
   return `<div class="wall-bubble" style="border-left:4px solid ${col}">
     <div class="wb-top">
       <span class="wb-emoji" style="background:${col}20">${T.e}</span>
       ${nameHtml}
       <span class="wb-code">${code}</span>
     </div>
-    <p class="wb-line">${wallLine(type)}</p>
+    <p class="wb-line">${line}</p>
   </div>`;
 }
 function wallSectionHTML(list, withRefresh, withReset){
-  const valid=(list||[]).filter(w=>w&&w.name&&TYPES[w.type]);
+  // 최신 버블이 위로 오도록 정렬 (같은 사람이 여러 장 남겨도 모두 유지·표시)
+  const valid=(list||[]).filter(w=>w&&w.name&&TYPES[w.type]).sort((a,b)=>(b.ts||0)-(a.ts||0));
   const inner = valid.length
-    ? `<div class="wall-grid">${valid.map(w=>wallBubbleHTML(w.name,w.type)).join('')}</div>`
+    ? `<div class="wall-grid">${valid.map(w=>wallBubbleHTML(w.name,w.type,w.msg)).join('')}</div>`
     : `<div class="wall-empty">아직 아무도 안 날렸어요 —<br>첫 버블의 주인공이 되어보세요 🎈</div>`;
   const refresh = withRefresh ? `<button class="btn ghost" style="margin-top:12px" onclick="loadTeam()">벽 새로고침 ⟳</button>` : '';
   // 리셋은 진행자 최종 화면에서만(withReset) — 현재 세션 wall 만 비움
@@ -917,7 +923,7 @@ async function resetWall(){
   }
 }
 function openShare(){
-  if(wallThrown || !myType) return;
+  if(!myType) return;
   const panel=document.getElementById('sharePanel');
   panel.style.display='block';
   document.getElementById('throwBtn').style.background=AXIS_HEX[typeAxis(myType)];
@@ -928,14 +934,16 @@ function openShare(){
 function closeShare(){ const p=document.getElementById('sharePanel'); if(p) p.style.display='none'; }
 function updateWallPreview(){
   const name=(document.getElementById('wallName')||{}).value||'';
-  document.getElementById('wallPreview').innerHTML=wallBubbleHTML(name, myType);
+  const msg=(document.getElementById('wallMsg')||{}).value||'';
+  document.getElementById('wallPreview').innerHTML=wallBubbleHTML(name, myType, msg);
 }
 async function throwToWall(){
-  if(wallThrown) return;
+  if(wallThrown) return;   // 전송 중 중복 클릭만 방지 (전송 후엔 다시 열어 추가 가능)
   if(!needFb()) return;
   const inp=document.getElementById('wallName');
   const msg=document.getElementById('throwMsg');
   const name=(inp.value||'').trim();
+  const oneLine=((document.getElementById('wallMsg')||{}).value||'').trim();
   if(!name){
     inp.classList.remove('shake'); void inp.offsetWidth; inp.classList.add('shake');
     msg.textContent='이름을 입력해주세요';
@@ -948,15 +956,19 @@ async function throwToWall(){
   if(bubble) bubble.classList.add('fly');
   try{
     const payload={ name, type: myType, ts: Date.now() };
+    if(oneLine) payload.msg=oneLine;
     if(live.role==='guest' && live.sid){
-      await setDoc(doc(db,'hbti_sessions',live.sid,'wall',live.pid), payload);   // create only
+      // 문서 ID에 시각을 붙여 개인당 여러 장 "추가" 가능 (기존 버블을 덮어쓰지 않음, create only 규칙 유지)
+      await setDoc(doc(db,'hbti_sessions',live.sid,'wall',live.pid+'_'+Date.now()), payload);
     }else{
       await addDoc(collection(db,'hbti_wall'), payload);                          // create only
     }
     setTimeout(()=>{
       closeShare();
+      wallThrown=false; btn.disabled=false;   // 추가로 또 남길 수 있게 복구
+      const wm=document.getElementById('wallMsg'); if(wm) wm.value='';
       const so=document.getElementById('shareOpenBtn');
-      if(so){ so.textContent='✅ 벽에 올렸어요'; so.disabled=true; }
+      if(so){ so.textContent='✅ 올렸어요 · 🎈 한 장 더 남기기'; so.disabled=false; }
     }, 680);
   }catch(e){
     console.error(e);
@@ -969,6 +981,19 @@ async function throwToWall(){
 /* ================= 팀 대시보드 ================= */
 async function openTeam(){ show('s-team'); loadTeam(); }
 
+// 진행자 화면 여부: ?host 로 접속했거나 현재 host 역할이면 세션 선택 드롭다운 노출
+function isHostView(){
+  return live.role==='host' || new URLSearchParams(location.search).has('host');
+}
+let teamSel=null;   // 팀지도에서 진행자가 선택한 세션 sid ('' = 개인 검사 누적)
+function pickTeamSession(v){ teamSel=v; loadTeam(); }
+function fmtSessTs(ts){
+  if(!ts) return '시각 미상';
+  const d=new Date(ts);
+  const hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0');
+  return `${d.getMonth()+1}/${d.getDate()} ${hh}:${mm} 오픈`;
+}
+
 async function loadTeam(){
   const body=document.getElementById('teamBody');
   body.innerHTML='<div class="loading"><span class="spin">🀄</span><br>도장을 세는 중…</div>';
@@ -977,13 +1002,41 @@ async function loadTeam(){
     document.getElementById('tCount').textContent=0;
     return;
   }
-  // 팀 벽 버블 로드 (열 때 1회) — 라이브면 세션 벽(+리셋 기준시각 반영), 솔로면 전역 벽
+  const hostView = isHostView() && live.role!=='guest';
+
+  // ── 진행자: 세션 선택 드롭다운 (오픈 시각 포함, 최신순) ──
+  let sessHTML='';
+  if(hostView){
+    let sessions=[];
+    try{
+      const ss=await getDocs(collection(db,'hbti_sessions'));
+      sessions=ss.docs.map(d=>({sid:d.id, ...d.data()}))
+        .sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,30);   // 최근 30개
+    }catch(e){ console.error(e); }
+    if(teamSel===null) teamSel = live.sid || (sessions[0]&&sessions[0].sid) || '';
+    const opts = [`<option value=""${teamSel===''?' selected':''}>🀄 개인 검사 누적 (전체)</option>`]
+      .concat(sessions.map(s=>{
+        const st = s.phase==='ended' ? '종료' : s.phase==='final' ? '결과공개' : (s.phase ? '진행중' : '—');
+        const label = `세션 #${s.sid.slice(-4)} · ${fmtSessTs(s.ts)} · ${st}`;
+        return `<option value="${s.sid}"${s.sid===teamSel?' selected':''}>${label}</option>`;
+      })).join('');
+    sessHTML=`<div class="team-card"><h3>🗂️ 세션 선택</h3>
+      <select id="teamSess" class="wall-input" style="font-size:14px" onchange="pickTeamSession(this.value)">${opts}</select>
+      <p class="mini-note" style="text-align:left;margin-top:8px">세션을 고르면 해당 라이브 세션의 결과·마음 벽을 볼 수 있어요</p></div>`;
+  }
+
+  // ── 데이터 소스 결정: 진행자=선택 세션 / 참여자=현재 세션 / 그 외=전역 ──
+  let dataSid=null;
+  if(hostView) dataSid = teamSel || null;
+  else if(live.role==='guest' && live.sid) dataSid = live.sid;
+
+  // 팀 벽 버블 로드 (열 때 1회) — 세션이면 세션 벽(+리셋 기준시각 반영), 아니면 전역 벽
   let wall=[], resetTs=0;
   try{
-    if(live.role==='guest' && live.sid){
-      const ws=await getDocs(collection(db,'hbti_sessions',live.sid,'wall'));
+    if(dataSid){
+      const ws=await getDocs(collection(db,'hbti_sessions',dataSid,'wall'));
       wall=ws.docs.map(d=>d.data());
-      const sdoc=await getDoc(doc(db,'hbti_sessions',live.sid));   // 소프트 리셋 기준시각
+      const sdoc=await getDoc(doc(db,'hbti_sessions',dataSid));   // 소프트 리셋 기준시각(과거 세션 호환)
       resetTs = (sdoc.exists() && sdoc.data().wallResetTs) || 0;
     }else{
       const ws=await getDocs(collection(db,'hbti_wall'));
@@ -995,9 +1048,19 @@ async function loadTeam(){
   const counts={}; let total=0;
   Object.keys(TYPES).forEach(t=>counts[t]=0);
   try{
-    if(live.role==='guest' && live.sid){
+    if(dataSid && hostView){
+      // 진행자: 요약(summary/final)이 있으면 그것을, 없으면(진행중 세션) types 를 직접 집계
+      const snap = await getDoc(doc(db,'hbti_sessions',dataSid,'summary','final'));
+      if(snap.exists()){
+        const d=snap.data(); total=d.total||0;
+        Object.entries(d.counts||{}).forEach(([t,c])=>{ if(counts[t]!==undefined) counts[t]=c; });
+      }else{
+        const ts=await getDocs(collection(db,'hbti_sessions',dataSid,'types'));
+        ts.forEach(docu=>{ const t=docu.data().t; if(counts[t]!==undefined){ counts[t]++; total++; } });
+      }
+    }else if(dataSid){
       // 라이브 참여자: 진행자가 게시한 요약 문서 1건만 읽음
-      const snap = await getDoc(doc(db,'hbti_sessions',live.sid,'summary','final'));
+      const snap = await getDoc(doc(db,'hbti_sessions',dataSid,'summary','final'));
       if(!snap.exists()){
         document.getElementById('tCount').textContent=0;
         body.innerHTML=`<div class="team-card" style="text-align:center;padding:26px">
@@ -1019,7 +1082,7 @@ async function loadTeam(){
         <p style="font-weight:800;margin-top:8px">아직 지도가 비어 있어요</p>
         <p style="font-size:13.5px;color:var(--ink-soft)">첫 번째 도장의 주인공이 되어주세요!</p></div>`
     : teamStatsHTML(counts, total);
-  body.innerHTML = statsHTML + wallHTML;
+  body.innerHTML = sessHTML + statsHTML + wallHTML;
 }
 
 function teamStatsHTML(counts, total){
@@ -1190,25 +1253,73 @@ function countQ(q){
   answersCache.forEach(x=>{ if(x.q===q){ x.v==='A'?a++:b++; } });
   return {a,b};
 }
-function vsCardHTML(q, c){
+function vsCardHTML(q, c, joins){
   const Q=QUESTIONS[q];
   const tot=c.a+c.b;
   const pa=tot? Math.round(c.a/tot*100):50;
+  // joins(세션 총원)가 있으면 "완료 N / 총원 M" 으로 표시
+  const midLabel = (joins && joins>0) ? `${tot} / ${joins}명 응답 완료` : `${tot}명 응답`;
   return `<div class="vs-card">
     <p class="q-scene">${Q.scene}</p>
     <h2 class="q-text" style="margin:6px 0 10px">${Q.text}</h2>
     <div class="vs-opt a"><span class="ve">${Q.a.e}</span><span class="vt">${Q.a.t}</span><b class="vn">${c.a}</b></div>
     <div class="vs-opt b"><span class="ve">${Q.b.e}</span><span class="vt">${Q.b.t}</span><b class="vn">${c.b}</b></div>
     <div class="vs-track"><i class="fa" style="width:${tot?pa:50}%"></i><i class="fb"></i></div>
-    <div class="vs-pct"><span class="l">${tot?pa:0}%</span><span style="color:var(--ink-soft)">${tot}명 응답</span><span class="r">${tot?100-pa:0}%</span></div>
+    <div class="vs-pct"><span class="l">${tot?pa:0}%</span><span style="color:var(--ink-soft)">${midLabel}</span><span class="r">${tot?100-pa:0}%</span></div>
   </div>`;
 }
 
 /* ================= 라이브: 진행자 ================= */
+// 진행자 리스너 일괄 구독 (신규 오픈/이어서 진행 공용)
+function hostSubscribe(sid){
+  const hSid=document.getElementById('hSid'); if(hSid) hSid.textContent='세션 #'+sid.slice(-4);
+  unsubs.joins = onSnapshot(collection(db,'hbti_sessions',sid,'joins'), s=>{
+    hostJoins=s.size;
+    document.getElementById('hCount').textContent=hostJoins;
+    pushTally();
+    if(live.phase==='question') renderHost();   // 총원(M)이 바뀌면 "N/M명 응답 완료" 갱신
+  });
+  unsubs.answers = onSnapshot(collection(db,'hbti_sessions',sid,'answers'), s=>{
+    answersCache = s.docs.map(d=>d.data());
+    pushTally();
+    if(live.phase==='question') renderHost();
+  });
+  unsubs.types = onSnapshot(collection(db,'hbti_sessions',sid,'types'), s=>{
+    typesCache = s.docs.map(d=>d.data().t);
+    if(live.phase==='final') renderHost();
+  });
+  // 팀 벽(자발적 실명 공개) 실시간 구독 — 진행자 화면
+  unsubs.wall = onSnapshot(collection(db,'hbti_sessions',sid,'wall'), s=>{
+    wallCache = s.docs.map(d=>d.data());
+    if(live.phase==='final') renderHost();
+  });
+  document.getElementById('hostBtn').style.display='block';
+  const eb=document.getElementById('hostEndBtn'); if(eb) eb.style.display='block';
+}
 async function hostStart(){
   if(!needFb()) return;
   // 중복 오픈 방어: 이미 열려있던 리스너/세션 상태를 먼저 정리하고 새로 연다
   clearUnsubs();
+
+  // ── 이어서 진행: 종료(ended)되지 않은 기존 세션이 있으면 새로 만들지 않고 그 세션을 복원 ──
+  //    (새로고침·재접속에도 세션 유지. "🏁 세션 종료"를 눌러야만 다음에 새 세션이 열림)
+  try{
+    const meta=await getDoc(doc(db,'hbti_meta','current'));
+    const prevSid = meta.exists() ? meta.data().sid : null;
+    if(prevSid){
+      const sdoc=await getDoc(doc(db,'hbti_sessions',prevSid));
+      const sd = sdoc.exists() ? sdoc.data() : null;
+      if(sd && sd.phase && sd.phase!=='ended'){
+        live={ role:'host', sid:prevSid, pid:null, phase:sd.phase, q:(typeof sd.q==='number'?sd.q:-1), answeredQ:{} };
+        answersCache=[]; typesCache=[]; hostJoins=0; wallCache=[]; wallResetTs=sd.wallResetTs||0;
+        hostSubscribe(prevSid);   // 집계/벽은 onSnapshot 초기 스냅샷으로 자동 복원
+        show('s-host');
+        renderHost();
+        return;
+      }
+    }
+  }catch(e){ console.error(e); }   // 복원 실패 시엔 새 세션 생성으로 진행
+
   const sid = rid();
   live={ role:'host', sid, pid:null, phase:'lobby', q:-1, answeredQ:{} };
   answersCache=[]; typesCache=[]; hostJoins=0; wallCache=[]; wallResetTs=0;
@@ -1230,29 +1341,24 @@ async function hostStart(){
     clearUnsubs(); live.role=null; return;
   }
   // 3) meta 갱신 성공 후에만 리스너 구독 + 화면 표시
-  const hSid=document.getElementById('hSid'); if(hSid) hSid.textContent='세션 #'+sid.slice(-4);
-  unsubs.joins = onSnapshot(collection(db,'hbti_sessions',sid,'joins'), s=>{
-    hostJoins=s.size;
-    document.getElementById('hCount').textContent=hostJoins;
-    pushTally();
-  });
-  unsubs.answers = onSnapshot(collection(db,'hbti_sessions',sid,'answers'), s=>{
-    answersCache = s.docs.map(d=>d.data());
-    pushTally();
-    if(live.phase==='question') renderHost();
-  });
-  unsubs.types = onSnapshot(collection(db,'hbti_sessions',sid,'types'), s=>{
-    typesCache = s.docs.map(d=>d.data().t);
-    if(live.phase==='final') renderHost();
-  });
-  // 팀 벽(자발적 실명 공개) 실시간 구독 — 진행자 화면
-  unsubs.wall = onSnapshot(collection(db,'hbti_sessions',sid,'wall'), s=>{
-    wallCache = s.docs.map(d=>d.data());
-    if(live.phase==='final') renderHost();
-  });
-  document.getElementById('hostBtn').style.display='block';
+  hostSubscribe(sid);
   show('s-host');
   renderHost();
+}
+// 세션 종료(진행자 전용) — 세션 문서에 phase:'ended' 기록. 데이터(답변·유형·벽)는 모두 보존.
+// 이후 진행자가 다시 열면 새 세션이 생성되고, 참여자는 meta 를 통해 새 세션으로 자동 연결된다.
+async function hostEnd(){
+  if(live.role!=='host' || !live.sid || hostBusy) return;
+  if(!confirm('세션을 종료할까요?\n종료해도 결과·마음 벽 데이터는 보존되며, 팀지도의 세션 선택에서 다시 볼 수 있어요.\n다음에 진행자 화면을 열면 새 세션이 시작됩니다.')) return;
+  hostBusy=true; setHostBtnsDisabled(true);
+  let ok=true;
+  try{
+    await setDoc(doc(db,'hbti_sessions',live.sid),{phase:'ended', endedTs:Date.now()},{merge:true});
+  }catch(e){ ok=false; console.error(e); }
+  hostBusy=false; setHostBtnsDisabled(false);
+  if(!ok){ alert('세션 종료 실패 — 네트워크 확인 후 다시 시도해주세요.'); return; }
+  if(tallyTimer){ clearTimeout(tallyTimer); tallyTimer=null; }
+  goIntro();   // 리스너 정리 + 처음 화면으로
 }
 function pushTally(){
   if(live.role!=='host' || !live.sid || tallyTimer) return;
@@ -1263,8 +1369,8 @@ function pushTally(){
   }, 1200);
 }
 function setHostBtnsDisabled(d){
-  const n=document.getElementById('hostBtn'), p=document.getElementById('hostPrevBtn');
-  if(n) n.disabled=d; if(p) p.disabled=d;
+  const n=document.getElementById('hostBtn'), p=document.getElementById('hostPrevBtn'), e=document.getElementById('hostEndBtn');
+  if(n) n.disabled=d; if(p) p.disabled=d; if(e) e.disabled=d;
 }
 // 세션 q/phase 갱신의 단일 경로. 쓰기를 "직렬화"(한 번에 하나만 in-flight)해
 // 같은 문서에 순서 없는 쓰기가 겹쳐 q가 뒤엉키는 것을 원천 차단.
@@ -1300,6 +1406,17 @@ async function publishSummary(){
   const counts={}; let total=0;
   Object.keys(TYPES).forEach(t=>counts[t]=0);
   typesCache.forEach(t=>{ if(counts[t]!==undefined){ counts[t]++; total++; } });
+  // 이어서 진행 직후 등 typesCache 가 아직 비어있을 수 있음 — 기존 요약이 있으면 빈 값으로 덮어쓰지 않는다
+  if(total===0){
+    try{
+      const snap=await getDoc(doc(db,'hbti_sessions',live.sid,'summary','final'));
+      if(snap.exists()){
+        const d=snap.data();
+        Object.entries(d.counts||{}).forEach(([t,c])=>{ if(counts[t]!==undefined) counts[t]=c; });
+        return {counts, total:d.total||0};
+      }
+    }catch(e){}
+  }
   try{ await setDoc(doc(db,'hbti_sessions',live.sid,'summary','final'),{counts,total,joins:hostJoins,ts:Date.now()}); }catch(e){}
   return {counts,total};
 }
@@ -1326,7 +1443,7 @@ async function renderHost(){
     const c=countQ(live.q);
     body.innerHTML=`<div style="font-weight:900;margin-bottom:10px">Q${live.q+1} / 12</div>
       <div class="progress"><i style="width:${(live.q+1)/12*100}%"></i></div>`
-      + vsCardHTML(live.q, c);
+      + vsCardHTML(live.q, c, hostJoins);
   }else if(live.phase==='final'){
     btn.style.display='none';
     if(prevBtn) prevBtn.style.display='none';
@@ -1342,7 +1459,7 @@ async function renderHost(){
       : `<div class="team-card" style="text-align:center;padding:26px"><p style="font-weight:800">참여자들이 개인 결과를 확인하면<br>유형 분포가 실시간으로 나타납니다</p></div>`;
     body.innerHTML = `<div class="done-badge">🎉 12문항 완료 · 총 ${hostJoins}명 참여</div>`
       + statsPart
-      + wallSectionHTML(filterWall(wallCache, wallResetTs), false, true)
+      + wallSectionHTML(filterWall(wallCache, wallResetTs), false, false)   // 라이브 중 리셋 버튼 제거 — 남긴 글은 세션 내내 유지
       + `<div class="team-card"><h3>📊 문항별 결과 리캡</h3>${recap}</div>`;
   }
 }
@@ -1384,6 +1501,7 @@ async function joinLive(){
       if(st.phase==='lobby') renderGuestLobby();
       else if(st.phase==='question') renderGuestQ();
       else if(st.phase==='final') guestFinal();
+      else if(st.phase==='ended') renderGuestEnded();
     });
     // tally(집계) 리스너는 여기서 만들지 않는다 — 답변 제출 후에만 subscribeTally()로 구독
   });
@@ -1397,22 +1515,42 @@ function subscribeTally(){
   try{
     unsubs.tally = onSnapshot(doc(db,'hbti_sessions',live.sid,'tally','current'), s=>{
       tallyCache = s.data()||null;
-      if(live.phase==='question' && live.answeredQ[live.q]) renderGuestAnswered();
+      if(live.phase!=='question') return;
+      if(live.answeredQ[live.q]) renderGuestAnswered();
+      else updateGuestProg();   // 답변 전에는 A/B 분포 없이 완료 인원만 갱신
     });
   }catch(e){}
+}
+// 답변 전 참여자 화면: 현재 질문의 "응답 완료 N / 총원 M" 표시 (선택지 분포는 답변 후에만 공개)
+function updateGuestProg(){
+  const el=document.getElementById('qProg'); if(!el) return;
+  const joins=(tallyCache&&tallyCache.joins)||0;
+  const done=(tallyCache&&tallyCache.q===live.q)?((tallyCache.a||0)+(tallyCache.b||0)):0;
+  el.textContent = joins ? `📊 ${done} / ${joins}명 답변 완료` : '📊 집계 대기 중…';
 }
 function renderGuestLobby(){
   document.getElementById('pQLabel').textContent='대기 중';
   document.getElementById('liveBody').innerHTML=
     `<div class="lobby-box"><span class="be">🀄</span><h3>입장 완료!</h3><p>진행자가 곧 첫 질문을 공개합니다</p></div>`;
 }
+// 진행자가 세션을 종료(ended)한 경우 — meta 리스너는 유지되어, 새 세션이 열리면 자동으로 다시 연결된다
+function renderGuestEnded(){
+  unsubTally();
+  document.getElementById('pQLabel').textContent='세션 종료';
+  document.getElementById('liveBody').innerHTML=
+    `<div class="lobby-box"><span class="be">🏁</span><h3>세션이 종료되었습니다</h3>
+      <p>참여해주셔서 감사합니다 · 진행자가 새 세션을 열면 자동으로 연결됩니다</p></div>
+     <button class="btn ghost" onclick="goIntro()">처음으로</button>`;
+}
 function renderGuestQ(){
-  unsubTally();   // 문항 전환: 이전 문항의 tally 리스너 해제 (상시로 켜두지 않음)
   const q=live.q, Q=QUESTIONS[q];
   document.getElementById('pQLabel').textContent=`Q${q+1} / 12`;
   if(live.answeredQ[q]){ subscribeTally(); renderGuestAnswered(true); return; }   // 이미 답한 질문(이전질문 재방문 포함) — 변경 불가, 집계만 다시 봄
   const body=document.getElementById('liveBody');
-  body.innerHTML=`${sceneCardHTML(Q.scene, Q.axis)}<h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`;
+  body.innerHTML=`${sceneCardHTML(Q.scene, Q.axis)}<h2 class="q-text">${Q.text}</h2><div id="liveOpts"></div>`
+    +`<p class="mini-note" id="qProg" style="font-weight:800">📊 집계 대기 중…</p>`;
+  subscribeTally();      // 답변 전에도 "완료 인원/총원" 이 보이도록 질문 단계 내내 구독 (같은 문서 1건)
+  updateGuestProg();
   const wrap=document.getElementById('liveOpts');
   [Q.a,Q.b].forEach(opt=>{
     const b=document.createElement('button');
@@ -1432,12 +1570,14 @@ function renderGuestQ(){
 function renderGuestAnswered(revisit){
   if(typeof revisit==='boolean') guestRevisit=revisit;   // 명시 호출 시에만 갱신(집계 갱신 재렌더는 유지)
   const q=live.q;
-  const c = (tallyCache && tallyCache.q===q) ? {a:tallyCache.a,b:tallyCache.b} : {a:0,b:0};
+  const fresh = tallyCache && tallyCache.q===q;
+  const c = fresh ? {a:tallyCache.a,b:tallyCache.b} : {a:0,b:0};
+  const joins = (tallyCache && tallyCache.joins) || 0;
   const badge = guestRevisit
     ? '✅ 이미 답하셨어요 — 결과를 함께 보고 있어요'
     : '✅ 답변 완료 — 실시간 집계';
   document.getElementById('liveBody').innerHTML=
-    `<div class="done-badge">${badge}</div>` + vsCardHTML(q,c)
+    `<div class="done-badge">${badge}</div>` + vsCardHTML(q,c,joins)
     + `<p class="mini-note">진행자가 질문을 옮기면 자동으로 넘어갑니다</p>`;
 }
 function guestFinal(){
@@ -1471,7 +1611,7 @@ function finishLiveGuest(){
   }
 })();
 
-Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,openDetailFromTeam,detailBack,backGuide,closeGuide,resetWall});
+Object.assign(window,{startQuiz,goBack,goIntro,restart,saveResult,openTeam,loadTeam,hostStart,hostNext,hostPrev,hostEnd,joinLive,openShare,closeShare,updateWallPreview,throwToWall,openGuide,openDetail,openDetailFromTeam,detailBack,backGuide,closeGuide,resetWall,pickTeamSession});
 
 </script>
 </body>
